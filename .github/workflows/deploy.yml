@@ -20,21 +20,19 @@ jobs:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     runs-on: ubuntu-latest
-    env:
-      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Stamp build version
         run: |
           TS="$(date +%Y%m%d%H%M%S)"
           sed -i "s/const CACHE = 'happylist-v[^']*'/const CACHE = 'happylist-v$TS'/" sw.js
           sed -i "s/const APP_VERSION = '[^']*'/const APP_VERSION = 'happylist-v$TS'/" js/app.js
           echo "{\"version\":\"happylist-v$TS\"}" > version.json
-      - uses: actions/configure-pages@v5
+      - uses: actions/configure-pages@v6
         with:
           enablement: true
-      - uses: actions/upload-pages-artifact@v3
+      - uses: actions/upload-pages-artifact@v5
         with:
           path: .
       - id: deployment
-        uses: actions/deploy-pages@v4
+        uses: actions/deploy-pages@v5
