@@ -1,0 +1,386 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <script>
+    // Defeat the GitHub Pages HTTP cache (max-age=600) by redirecting every
+    // bare load to a cache-busted URL. The browser has no HTTP cache entry
+    // for ?v=<timestamp> URLs so it always fetches fresh.
+    (function () {
+      var u = new URL(location.href);
+      if (!u.searchParams.has('v')) {
+        u.searchParams.set('v', Date.now());
+        location.replace(u.toString());
+      }
+    })();
+  </script>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="theme-color" content="#2563eb">
+  <title>Happy List 🤞</title>
+  <link rel="manifest" href="manifest.json">
+  <link rel="apple-touch-icon" href="icons/icon.svg">
+  <link rel="stylesheet" href="css/app.css">
+</head>
+<body>
+
+<!-- ── Offline banner ── -->
+<div id="offline-banner" class="offline-banner hidden">
+  Offline — changes saved locally
+</div>
+
+<!-- ── Update banner ── -->
+<div id="update-banner" class="update-banner hidden">
+  Update available — close & reopen the app to apply
+</div>
+
+<!-- ── Views ── -->
+<main id="app">
+
+  <!-- LIST VIEW -->
+  <section id="view-list" class="view active">
+    <header class="view-header">
+      <h1>Happy List 🤞</h1>
+    </header>
+    <div class="search-row">
+      <input type="search" id="list-search" placeholder="Search items…" autocomplete="off" data-lpignore="true" data-1p-ignore data-bwignore="true">
+    </div>
+    <div id="list-store-filters" class="filter-chips"></div>
+    <ul id="item-list" class="item-list"></ul>
+    <button id="btn-add-item" class="fab" aria-label="Add item">+</button>
+  </section>
+
+  <!-- SHOP VIEW -->
+  <section id="view-shop" class="view">
+    <header class="view-header">
+      <h1 id="shop-title">Shop</h1>
+      <div class="header-actions">
+        <button id="btn-show-card" class="barcode-btn hidden" title="Show loyalty card" aria-label="Show loyalty card barcode">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" width="20" height="20">
+            <path d="M3 5v14M7 5v14M11 5v14M15 5v8M19 5v8M15 17v2M19 17v2"/>
+          </svg>
+        </button>
+        <button id="btn-finish-trip" class="finish-btn hidden">Leave Shop</button>
+      </div>
+    </header>
+    <div id="shop-store-grid" class="store-grid"></div>
+    <div id="shop-run-view" class="hidden">
+      <ul id="shop-checklist" class="checklist"></ul>
+    </div>
+  </section>
+
+  <!-- SETTINGS VIEW -->
+  <section id="view-settings" class="view">
+    <header class="view-header">
+      <h1>Settings</h1>
+    </header>
+    <div class="settings-body">
+
+      <section class="settings-section">
+        <h2>Sync Status</h2>
+        <p id="sync-status-text" class="settings-hint">Not configured.</p>
+        <div class="btn-row">
+          <button id="btn-manual-sync" class="secondary-btn">Sync now</button>
+        </div>
+      </section>
+
+      <section class="settings-section">
+        <h2>Stores</h2>
+        <div class="btn-row">
+          <button id="btn-manage-stores" class="secondary-btn">Manage stores</button>
+        </div>
+      </section>
+
+      <section class="settings-section">
+        <h2>Categories</h2>
+        <div class="btn-row">
+          <button id="btn-manage-cats" class="secondary-btn">Manage categories</button>
+        </div>
+      </section>
+
+      <section class="settings-section">
+        <h2>GitHub Credentials</h2>
+        <p class="settings-hint">Stored securely on this device. Only change these if you need to reconfigure sync.</p>
+        <div class="btn-row">
+          <button id="btn-open-creds" class="secondary-btn">Change credentials</button>
+        </div>
+      </section>
+
+      <section class="settings-section">
+        <h2>Storage</h2>
+        <p id="storage-status" class="settings-hint">Checking…</p>
+        <div class="btn-row">
+          <button id="btn-persist" class="secondary-btn">Request persistent storage</button>
+        </div>
+      </section>
+
+      <section class="settings-section">
+        <h2>Backup</h2>
+        <div class="btn-row">
+          <button id="btn-export" class="secondary-btn">Export JSON</button>
+          <button id="btn-import-json" class="secondary-btn">Restore from JSON</button>
+          <button id="btn-open-backups" class="secondary-btn">Restore from backup</button>
+        </div>
+        <p id="import-error" class="settings-hint" style="color:var(--red)"></p>
+        <input type="file" id="input-restore-json" accept=".json" style="display:none">
+      </section>
+
+      <section id="install-section" class="settings-section hidden">
+        <h2>Install App</h2>
+        <p class="settings-hint">Add Happy List to your home screen for the best experience.</p>
+        <div class="btn-row">
+          <button id="btn-install" class="primary-btn">Install</button>
+        </div>
+      </section>
+
+      <section class="settings-section">
+        <h2>About</h2>
+        <p class="settings-hint">Happy List — version 1.6</p>
+        <p id="sw-version" class="sw-version"></p>
+      </section>
+
+    </div>
+  </section>
+
+</main>
+
+<!-- ── Bottom nav ── -->
+<nav class="bottom-nav">
+  <button class="nav-btn active" data-view="list">
+    <span class="nav-icon">☑</span>
+    <span class="nav-label">List</span>
+    <span id="nav-sync-dot" class="sync-dot hidden"></span>
+  </button>
+  <button class="nav-btn" data-view="shop">
+    <span class="nav-icon">🛒</span>
+    <span class="nav-label">Shop</span>
+  </button>
+  <button class="nav-btn" data-view="settings">
+    <span class="nav-icon">⚙</span>
+    <span class="nav-label">Settings</span>
+  </button>
+</nav>
+
+<!-- ── Item modal ── -->
+<div id="modal-item" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="modal-item-title">
+  <div class="modal-backdrop"></div>
+  <div class="modal-sheet">
+    <h2 id="modal-item-title">Add Item</h2>
+    <input type="hidden" id="item-id">
+    <label class="settings-label">
+      Name *
+      <input type="text" id="item-name" placeholder="e.g. Milk" required autocomplete="off" data-lpignore="true" data-1p-ignore data-bwignore="true">
+    </label>
+    <div class="row-2">
+      <label class="settings-label">
+        Quantity
+        <input type="text" id="item-qty" placeholder="e.g. 2" autocomplete="off" data-lpignore="true" data-1p-ignore data-bwignore="true">
+      </label>
+      <label class="settings-label">
+        Unit
+        <input type="text" id="item-unit" placeholder="e.g. L" autocomplete="off" data-lpignore="true" data-1p-ignore data-bwignore="true">
+      </label>
+    </div>
+    <label class="settings-label">
+      Category
+      <button type="button" id="btn-pick-category" class="category-pick-btn">— no category —</button>
+      <input type="hidden" id="item-category">
+    </label>
+    <label class="settings-label">
+      Stores
+      <button type="button" id="btn-pick-stores" class="store-pick-btn">— no stores —</button>
+    </label>
+    <label class="settings-label">
+      Notes
+      <input type="text" id="item-notes" placeholder="Optional notes" autocomplete="off" data-lpignore="true" data-1p-ignore data-bwignore="true">
+    </label>
+    <div class="btn-row">
+      <div class="btn-row-left">
+        <button id="btn-save-item" class="primary-btn">Save</button>
+        <button id="btn-cancel-item" class="secondary-btn">Cancel</button>
+      </div>
+      <button id="btn-archive-item" class="danger-btn hidden">Delete</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── Stores list modal ── -->
+<div id="modal-stores-list" class="modal hidden" role="dialog" aria-modal="true">
+  <div class="modal-backdrop" id="stores-list-backdrop"></div>
+  <div class="modal-sheet">
+    <h2>Stores</h2>
+    <ul id="store-list" class="store-list"></ul>
+    <div class="btn-row" style="margin-top:16px">
+      <button id="btn-add-store" class="secondary-btn">+ Add store</button>
+      <button id="btn-close-stores-list" class="secondary-btn">Close</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── Categories list modal ── -->
+<div id="modal-cats-list" class="modal hidden" role="dialog" aria-modal="true">
+  <div class="modal-backdrop" id="cats-list-backdrop"></div>
+  <div class="modal-sheet">
+    <h2>Categories</h2>
+    <ul id="category-list" class="category-list"></ul>
+    <div class="btn-row" style="margin-top:16px">
+      <button id="btn-add-category" class="secondary-btn">+ Add category</button>
+      <button id="btn-close-cats-list" class="secondary-btn">Close</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── Store modal ── -->
+<div id="modal-store" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="modal-store-title">
+  <div class="modal-backdrop"></div>
+  <div class="modal-sheet">
+    <h2 id="modal-store-title">Add Store</h2>
+    <input type="hidden" id="store-id">
+    <label class="settings-label">
+      Store name *
+      <input type="text" id="store-name" placeholder="e.g. Woolworths" autocomplete="off" data-lpignore="true" data-1p-ignore data-bwignore="true">
+    </label>
+    <label class="settings-label">Primary colour</label>
+    <div id="colour-picker" class="colour-picker"></div>
+    <input type="hidden" id="store-colour" value="#2563eb">
+    <label class="settings-label">Secondary colour <span class="settings-hint-inline">(optional — creates a split)</span></label>
+    <div id="colour-picker-2" class="colour-picker"></div>
+    <input type="hidden" id="store-colour2" value="">
+    <label class="settings-label">Loyalty card <span class="settings-hint-inline">(optional — scan a screenshot of the barcode)</span></label>
+    <div id="card-scan-status" class="card-scan-status"></div>
+    <input type="file" id="card-image-input" accept="image/*" class="hidden">
+    <button type="button" id="btn-scan-card" class="secondary-btn" style="margin-top:14px;margin-bottom:14px">Scan card from photo</button>
+    <div id="card-manual-entry" class="card-manual-entry hidden">
+      <textarea id="card-number-input" rows="3" placeholder="Card number (or full QR content — scan, don't type for QR)" autocomplete="off" data-lpignore="true" data-1p-ignore data-bwignore="true"></textarea>
+      <span class="settings-hint-inline" style="margin-top:-4px">For QR codes, always scan the screenshot — typing just the visible number won't match</span>
+      <select id="card-format-select">
+        <option value="code_128">Code 128 (most loyalty cards)</option>
+        <option value="ean_13">EAN-13</option>
+        <option value="ean_8">EAN-8</option>
+        <option value="code_39">Code 39</option>
+        <option value="upc_a">UPC-A</option>
+        <option value="qr_code">QR Code</option>
+      </select>
+      <span class="card-clear-link" id="card-clear-link">Clear card</span>
+    </div>
+    <input type="hidden" id="store-card-number">
+    <input type="hidden" id="store-card-format">
+    <div class="btn-row">
+      <div class="btn-row-left">
+        <button id="btn-save-store" class="primary-btn">Save</button>
+        <button id="btn-cancel-store" class="secondary-btn">Cancel</button>
+      </div>
+      <button id="btn-delete-store" class="danger-btn hidden">Delete</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── Category modal ── -->
+<div id="modal-category" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="modal-cat-title">
+  <div class="modal-backdrop"></div>
+  <div class="modal-sheet">
+    <h2 id="modal-cat-title">Add Category</h2>
+    <input type="hidden" id="cat-id">
+    <label class="settings-label">
+      Category name *
+      <input type="text" id="cat-name" placeholder="e.g. Produce" autocomplete="off" data-lpignore="true" data-1p-ignore data-bwignore="true">
+    </label>
+    <div class="btn-row">
+      <div class="btn-row-left">
+        <button id="btn-save-cat" class="primary-btn">Save</button>
+        <button id="btn-cancel-cat" class="secondary-btn">Cancel</button>
+      </div>
+      <button id="btn-delete-cat" class="danger-btn hidden">Delete</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── GitHub credentials modal ── -->
+<div id="modal-creds" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="modal-creds-title">
+  <div class="modal-backdrop"></div>
+  <div class="modal-sheet">
+    <h2 id="modal-creds-title">GitHub Credentials</h2>
+    <p class="settings-hint">
+      Create a private GitHub repo and a Fine-grained Personal Access Token
+      with <strong>Contents: Read and Write</strong> on that repo.
+    </p>
+    <label class="settings-label">
+      GitHub data repo
+      <input type="text" id="gh-repo" autocomplete="off" spellcheck="false" placeholder="username/repo-name" data-lpignore="true" data-1p-ignore data-bwignore="true">
+    </label>
+    <label class="settings-label">
+      Personal Access Token
+      <input type="password" id="gh-pat" autocomplete="one-time-code" spellcheck="false" placeholder="github_pat_…" data-lpignore="true" data-1p-ignore data-bwignore="true">
+      <button type="button" id="btn-toggle-pat" class="text-btn">Show</button>
+    </label>
+    <p id="sync-test-result" class="settings-hint"></p>
+    <div class="btn-row">
+      <button id="btn-test-sync" class="primary-btn">Save &amp; test connection</button>
+      <button id="btn-close-creds" class="secondary-btn">Close</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── Backups modal ── -->
+<div id="modal-backups" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="modal-backups-title">
+  <div class="modal-backdrop"></div>
+  <div class="modal-sheet">
+    <h2 id="modal-backups-title">Restore from Backup</h2>
+    <p class="settings-hint">A backup is saved automatically each day you sync. Restoring replaces all current data on this device, then syncs it to all devices.</p>
+    <div id="backup-list-content"></div>
+    <p id="backup-error" class="settings-hint" style="color:#dc2626"></p>
+    <div class="btn-row" style="margin-top:20px">
+      <button id="btn-close-backups" class="secondary-btn">Close</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── Store picker modal ── -->
+<div id="modal-store-picker" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="modal-store-picker-title">
+  <div class="modal-backdrop" id="store-picker-backdrop"></div>
+  <div class="modal-sheet">
+    <h2 id="modal-store-picker-title">Choose Stores</h2>
+    <ul id="store-picker-list" class="store-picker-list"></ul>
+    <div class="btn-row" style="margin-top:20px">
+      <button id="btn-store-picker-done" class="primary-btn">Done</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── Category picker modal ── -->
+<div id="modal-cat-picker" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="modal-cat-picker-title">
+  <div class="modal-backdrop" id="cat-picker-backdrop"></div>
+  <div class="modal-sheet">
+    <h2 id="modal-cat-picker-title">Choose Category</h2>
+    <ul id="cat-picker-list" class="cat-picker-list"></ul>
+  </div>
+</div>
+
+<!-- ── Confirm dialog ── -->
+<div id="modal-confirm" class="modal hidden" role="dialog" aria-modal="true">
+  <div class="modal-backdrop" id="confirm-backdrop"></div>
+  <div class="modal-sheet">
+    <p id="confirm-message" class="confirm-message"></p>
+    <div class="btn-row">
+      <button id="btn-confirm-cancel" class="secondary-btn">Cancel</button>
+      <button id="btn-confirm-ok" class="primary-btn">OK</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── Barcode fullscreen overlay ── -->
+<div id="barcode-overlay" class="barcode-overlay hidden" role="dialog" aria-modal="true" aria-label="Loyalty card barcode">
+  <div class="barcode-overlay-inner">
+    <p class="barcode-store-name"></p>
+    <svg id="barcode-svg"></svg>
+    <canvas id="barcode-canvas" class="hidden"></canvas>
+    <img id="barcode-img" class="hidden" alt="Loyalty card barcode">
+    <p id="barcode-fallback-number" class="barcode-fallback-number hidden"></p>
+  </div>
+</div>
+
+<script type="module" src="js/app.js"></script>
+</body>
+</html>

@@ -1,0 +1,13 @@
+{
+  "name": "Happy List",
+  "short_name": "Happy List",
+  "description": "Offline-first household shopping list",
+  "start_url": ".",
+  "display": "standalone",
+  "orientation": "portrait",
+  "theme_color": "#2563eb",
+  "background_color": "#ffffff",
+  "icons": [
+    { "src": "icons/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }
+  ]
+}
