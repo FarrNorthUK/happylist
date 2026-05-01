@@ -430,6 +430,13 @@ body {
 .store-card-count { font-size: .9rem; font-weight: 500; opacity: .9; }
 
 /* ── Shop checklist ── */
+#shop-run-view {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  min-height: 0;
+}
 .checklist {
   flex: 1;
   overflow-y: auto;
