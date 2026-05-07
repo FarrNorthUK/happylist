@@ -471,7 +471,6 @@ body {
   color: var(--green);
   text-align: center;
   list-style: none;
-  border-bottom: none;
 }
 .run-divider--muted {
   color: var(--grey-4);
