@@ -1,6 +1,6 @@
 import db, { getSyncMeta, setSyncMeta, now } from './db.js';
 
-const TABLES      = ['stores', 'categories', 'items', 'shoppingRuns', 'checkedItems'];
+const TABLES      = ['stores', 'items', 'shoppingRuns', 'checkedItems'];
 const FILE        = 'happylist-data.json';
 const BACKUP_DIR  = 'backups';
 const MAX_BACKUPS = 10;
@@ -60,7 +60,7 @@ async function doSync(repo, pat, testOnly, forcePush = false) {
 
   if (getRes.status === 404) {
     // File doesn't exist yet — first sync, we'll create it
-    remoteData = { version: 1, stores: [], categories: [], items: [], shoppingRuns: [], checkedItems: [] };
+    remoteData = { version: 1, stores: [], items: [], shoppingRuns: [], checkedItems: [] };
   } else if (getRes.status === 401 || getRes.status === 403) {
     return { ok: false, message: 'Authentication failed. Check your Personal Access Token.' };
   } else if (!getRes.ok) {
