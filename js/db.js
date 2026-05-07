@@ -11,6 +11,17 @@ db.version(1).stores({
   syncMeta:     '++id, &key',
 });
 
+db.version(2).stores({
+  stores:       '++id, name, sortOrder, updatedAt, deletedAt',
+  categories:   null,
+  items:        '++id, name, *storeIds, updatedAt, deletedAt',
+  shoppingRuns: '++id, storeId, startedAt, completedAt, updatedAt, deletedAt',
+  checkedItems: '++id, runId, itemId, checkedAt, updatedAt, deletedAt',
+  syncMeta:     '++id, &key',
+}).upgrade(tx =>
+  tx.table('items').toCollection().modify(item => { item.categoryId = null; })
+);
+
 export default db;
 
 export function now() {
