@@ -1,10 +1,8 @@
 import db, { now, getSyncMeta, setSyncMeta } from '../db.js';
-import { liveQuery } from 'https://cdn.jsdelivr.net/npm/dexie@4/dist/dexie.mjs';
 import { flushSync, listBackups, restoreBackup, restoreFromData } from '../sync.js';
 import { checkForUpdate } from '../app.js';
 import { showConfirm } from '../confirm.js';
 
-let catSubscription = null;
 let deferredInstallPrompt = null;
 
 export function initSettings() {
@@ -12,11 +10,6 @@ export function initSettings() {
   updateSyncStatus();
   checkStorage();
   loadSwVersion();
-
-  catSubscription?.unsubscribe();
-  catSubscription = liveQuery(() =>
-    db.categories.filter(c => !c.deletedAt).sortBy('sortOrder')
-  ).subscribe({ next: renderCategories, error: console.error });
 
   // Sync config
   document.getElementById('btn-test-sync').onclick = testSync;
@@ -29,22 +22,10 @@ export function initSettings() {
   // Storage
   document.getElementById('btn-persist').onclick = requestPersist;
 
-  // Categories
-  document.getElementById('btn-add-category').onclick = () => openCatModal(null);
-  document.getElementById('btn-save-cat').onclick = saveCat;
-  document.getElementById('btn-delete-cat').onclick = deleteCat;
-  document.getElementById('btn-cancel-cat').onclick = closeCatModal;
-  document.querySelector('#modal-category .modal-backdrop').onclick = closeCatModal;
-
   // Stores list modal
   document.getElementById('btn-manage-stores').onclick = openStoresListModal;
   document.getElementById('btn-close-stores-list').onclick = closeStoresListModal;
   document.getElementById('stores-list-backdrop').onclick = closeStoresListModal;
-
-  // Categories list modal
-  document.getElementById('btn-manage-cats').onclick = openCatsListModal;
-  document.getElementById('btn-close-cats-list').onclick = closeCatsListModal;
-  document.getElementById('cats-list-backdrop').onclick = closeCatsListModal;
 
   // Export / Backup
   document.getElementById('btn-export').onclick = exportData;
@@ -196,74 +177,15 @@ async function requestPersist() {
     : 'Request denied — data may be evicted under disk pressure.';
 }
 
-// ── Categories ──
-
-function renderCategories(cats) {
-  const ul = document.getElementById('category-list');
-  ul.innerHTML = '';
-  if (!cats.length) {
-    ul.innerHTML = '<li class="settings-hint" style="padding:8px 0">No categories yet.</li>';
-    return;
-  }
-  cats.forEach(cat => {
-    const li = document.createElement('li');
-    li.className = 'category-row';
-    li.innerHTML = `
-      <span class="category-row-name">${esc(cat.name)}</span>`;
-    li.onclick = () => openCatModal(cat);
-    ul.appendChild(li);
-  });
-}
-
-function openCatModal(cat) {
-  document.getElementById('modal-cat-title').textContent = cat ? 'Edit Category' : 'Add Category';
-  document.getElementById('cat-id').value = cat?.id ?? '';
-  document.getElementById('cat-name').value = cat?.name ?? '';
-  document.getElementById('btn-delete-cat').classList.toggle('hidden', !cat);
-  document.getElementById('modal-category').classList.remove('hidden');
-}
-
-function closeCatModal() {
-  document.getElementById('modal-category').classList.add('hidden');
-}
-
-async function saveCat() {
-  const name = document.getElementById('cat-name').value.trim();
-  if (!name) { document.getElementById('cat-name').focus(); return; }
-  const id = document.getElementById('cat-id').value;
-  const t = now();
-  if (id) {
-    await db.categories.update(Number(id), { name, updatedAt: t });
-  } else {
-    const max = await db.categories.orderBy('sortOrder').last();
-    await db.categories.add({ name, sortOrder: (max?.sortOrder ?? -1) + 1, updatedAt: t, deletedAt: null });
-  }
-  triggerSyncSoon();
-  closeCatModal();
-}
-
-async function deleteCat() {
-  const id = Number(document.getElementById('cat-id').value);
-  if (!id) return;
-  const t = now();
-  // Remove category from items
-  const affected = await db.items.filter(i => !i.deletedAt && i.categoryId === id).toArray();
-  await Promise.all(affected.map(i => db.items.update(i.id, { categoryId: null, updatedAt: t })));
-  await db.categories.update(id, { deletedAt: t, updatedAt: t });
-  triggerSyncSoon();
-  closeCatModal();
-}
-
 async function downloadCurrentData() {
-  const [stores, categories, items, shoppingRuns, checkedItems] = await Promise.all([
+  const [stores, items, shoppingRuns, checkedItems] = await Promise.all([
     db.stores.toArray(),
-    db.categories.toArray(),
     db.items.toArray(),
     db.shoppingRuns.toArray(),
     db.checkedItems.toArray(),
   ]);
   const ts = new Date().toISOString().slice(0, 19).replace(/:/g, '-');
-  const blob = new Blob([JSON.stringify({ version: 1, exportedAt: now(), stores, categories, items, shoppingRuns, checkedItems }, null, 2)], { type: 'application/json' });
+  const blob = new Blob([JSON.stringify({ version: 1, exportedAt: now(), stores, items, shoppingRuns, checkedItems }, null, 2)], { type: 'application/json' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
@@ -330,8 +252,6 @@ function closeBackupModal() {
 
 function openStoresListModal()  { document.getElementById('modal-stores-list').classList.remove('hidden'); }
 function closeStoresListModal() { document.getElementById('modal-stores-list').classList.add('hidden'); }
-function openCatsListModal()    { document.getElementById('modal-cats-list').classList.remove('hidden'); }
-function closeCatsListModal()   { document.getElementById('modal-cats-list').classList.add('hidden'); }
 
 async function loadSwVersion() {
   const el = document.getElementById('sw-version');
@@ -340,11 +260,3 @@ async function loadSwVersion() {
   el.textContent = keys[0] ?? '';
 }
 
-function triggerSyncSoon() {
-  window.dispatchEvent(new CustomEvent('happylist:mutated'));
-}
-
-function esc(str) {
-  return String(str).replace(/[&<>"']/g, c =>
-    ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]));
-}
