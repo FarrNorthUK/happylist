@@ -211,6 +211,10 @@ body {
   min-height: 44px;
 }
 .item-row:active { background: var(--grey-1); }
+.item-row--bought {
+  opacity: 0.45;
+  text-decoration: line-through;
+}
 .item-main { flex: 1; min-width: 0; }
 .item-name-row {
   display: flex;
