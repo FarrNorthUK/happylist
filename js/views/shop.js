@@ -184,7 +184,7 @@ function makeRunRow(item, section) {
       }
     };
   } else if (section === 'ticked') {
-    li.className = 'item-row item-row--bought';
+    li.className = 'item-row';
     const check = document.createElement('div');
     check.className = 'run-check run-check--checked';
     check.textContent = '✓';

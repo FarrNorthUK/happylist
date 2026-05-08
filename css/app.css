@@ -532,7 +532,7 @@ body {
 .warn-btn      { background: #f59e0b; color: #fff; }
 .warn-btn:active { filter: brightness(.9); }
 .text-btn      { background: none; color: var(--blue); padding: 6px 8px; font-size: .9rem; min-height: auto; }
-#btn-confirm-third { display: none; width: 100%; margin-top: 8px; }
+#btn-confirm-third { display: none; flex: 1; }
 #btn-confirm-third.visible { display: block; }
 
 .icon-btn {
