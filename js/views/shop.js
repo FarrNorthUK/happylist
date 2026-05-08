@@ -99,66 +99,108 @@ async function startRun(store) {
 function subscribeToRun() {
   subscription?.unsubscribe();
   subscription = liveQuery(async () => {
-    const [items, categories, checkedNow] = await Promise.all([
-      // Exclude bought items from the shop checklist
-      db.items.filter(i => !i.deletedAt && !i.boughtAt && (i.storeIds || []).includes(currentStoreId)).toArray(),
-      db.categories.filter(c => !c.deletedAt).sortBy('sortOrder'),
+    const [allStoreItems, checkedNow] = await Promise.all([
+      db.items.filter(i => !i.deletedAt && (i.storeIds || []).includes(currentStoreId)).toArray(),
       db.checkedItems.filter(ci => ci.runId === currentRunId && !ci.deletedAt).toArray(),
     ]);
-    return { items, categories, checkedNow };
+    return { allStoreItems, checkedNow };
   }).subscribe({ next: renderRunView, error: console.error });
 }
 
-function renderRunView({ items, categories, checkedNow }) {
+function renderRunView({ allStoreItems, checkedNow }) {
   const checkedSet = new Set(checkedNow.map(ci => ci.itemId));
-  const catMap = Object.fromEntries(categories.map(c => [c.id, c]));
 
-  const groups = {};
-  const UNCATEGORISED = '__none__';
-  items.forEach(item => {
-    const key = item.categoryId ? String(item.categoryId) : UNCATEGORISED;
-    if (!groups[key]) groups[key] = [];
-    groups[key].push(item);
-  });
+  const wanted = allStoreItems
+    .filter(i => !i.boughtAt && !checkedSet.has(i.id))
+    .sort((a, b) => a.name.localeCompare(b.name));
 
-  const sortedKeys = categories
-    .filter(c => groups[String(c.id)])
-    .map(c => String(c.id));
-  if (groups[UNCATEGORISED]) sortedKeys.push(UNCATEGORISED);
+  const ticked = allStoreItems
+    .filter(i => checkedSet.has(i.id))
+    .sort((a, b) => a.name.localeCompare(b.name));
+
+  const prevBought = allStoreItems
+    .filter(i => i.boughtAt && !checkedSet.has(i.id))
+    .sort((a, b) => a.name.localeCompare(b.name));
 
   const ul = document.getElementById('shop-checklist');
-  ul.innerHTML = '';
+  ul.textContent = '';
 
-  if (!items.length) {
-    ul.innerHTML = '<li class="empty-state">No items to get from this store.</li>';
+  if (!wanted.length && !ticked.length && !prevBought.length) {
+    const li = document.createElement('li');
+    li.className = 'empty-state';
+    li.textContent = 'No items for this store.';
+    ul.appendChild(li);
     return;
   }
 
-  sortedKeys.forEach(key => {
-    const groupItems = groups[key];
-    const catName = key === UNCATEGORISED ? 'Other' : (catMap[Number(key)]?.name ?? 'Other');
+  wanted.forEach(item => ul.appendChild(makeRunRow(item, 'wanted')));
 
-    const header = document.createElement('li');
-    header.className = 'checklist-group-header';
-    header.textContent = catName;
-    ul.appendChild(header);
+  if (ticked.length) {
+    ul.appendChild(makeDivider('— ticked off this run —', false));
+    ticked.forEach(item => ul.appendChild(makeRunRow(item, 'ticked')));
+  }
 
-    groupItems.forEach(item => {
-      const isChecked = checkedSet.has(item.id);
-      const li = document.createElement('li');
-      li.className = 'check-row' + (isChecked ? ' checked' : '');
-      li.dataset.itemId = item.id;
-      const meta = [item.quantity, item.unit].filter(Boolean).join(' ');
-      li.innerHTML = `
-        <span class="check-box">${isChecked ? '✓' : ''}</span>
-        <span class="item-main">
-          <span class="check-name">${esc(item.name)}</span>
-          ${meta ? `<div class="check-qty">${esc(meta)}</div>` : ''}
-        </span>`;
-      li.onclick = () => toggleCheck(item.id, isChecked);
-      ul.appendChild(li);
-    });
-  });
+  if (prevBought.length) {
+    ul.appendChild(makeDivider('— previously bought — tap to re-add —', true));
+    prevBought.forEach(item => ul.appendChild(makeRunRow(item, 'prev')));
+  }
+}
+
+function makeDivider(text, muted) {
+  const li = document.createElement('li');
+  li.className = 'run-divider' + (muted ? ' run-divider--muted' : '');
+  li.textContent = text;
+  return li;
+}
+
+function makeRunRow(item, section) {
+  const li = document.createElement('li');
+  const meta = [item.quantity, item.unit].filter(Boolean).join(' ');
+
+  const main = document.createElement('div');
+  main.className = 'item-main';
+
+  const nameSpan = document.createElement('span');
+  nameSpan.className = 'item-name';
+  nameSpan.textContent = item.name;
+  main.appendChild(nameSpan);
+
+  if (meta) {
+    const metaDiv = document.createElement('div');
+    metaDiv.className = 'item-meta';
+    metaDiv.textContent = meta;
+    main.appendChild(metaDiv);
+  }
+
+  li.appendChild(main);
+
+  if (section === 'prev') {
+    li.className = 'item-row item-row--bought';
+    const btn = document.createElement('button');
+    btn.className = 'readd-btn';
+    btn.textContent = 'Add';
+    btn.onclick = async e => {
+      e.stopPropagation();
+      await db.items.update(item.id, { boughtAt: null, updatedAt: now() });
+      triggerSyncSoon();
+    };
+    li.appendChild(btn);
+  } else if (section === 'ticked') {
+    li.className = 'item-row item-row--bought';
+    const check = document.createElement('div');
+    check.className = 'run-check run-check--checked';
+    check.textContent = '✓';
+    li.appendChild(check);
+    li.onclick = () => toggleCheck(item.id, true);
+  } else {
+    li.className = 'item-row';
+    const check = document.createElement('div');
+    check.className = 'run-check';
+    li.appendChild(check);
+    li.onclick = () => toggleCheck(item.id, false);
+  }
+
+  return li;
 }
 
 async function toggleCheck(itemId, currentlyChecked) {

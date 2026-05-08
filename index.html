@@ -94,13 +94,6 @@
       </section>
 
       <section class="settings-section">
-        <h2>Categories</h2>
-        <div class="btn-row">
-          <button id="btn-manage-cats" class="secondary-btn">Manage categories</button>
-        </div>
-      </section>
-
-      <section class="settings-section">
         <h2>GitHub Credentials</h2>
         <p class="settings-hint">Stored securely on this device. Only change these if you need to reconfigure sync.</p>
         <div class="btn-row">
@@ -184,11 +177,6 @@
       </label>
     </div>
     <label class="settings-label">
-      Category
-      <button type="button" id="btn-pick-category" class="category-pick-btn">— no category —</button>
-      <input type="hidden" id="item-category">
-    </label>
-    <label class="settings-label">
       Stores
       <button type="button" id="btn-pick-stores" class="store-pick-btn">— no stores —</button>
     </label>
@@ -215,19 +203,6 @@
     <div class="btn-row" style="margin-top:16px">
       <button id="btn-add-store" class="secondary-btn">+ Add store</button>
       <button id="btn-close-stores-list" class="secondary-btn">Close</button>
-    </div>
-  </div>
-</div>
-
-<!-- ── Categories list modal ── -->
-<div id="modal-cats-list" class="modal hidden" role="dialog" aria-modal="true">
-  <div class="modal-backdrop" id="cats-list-backdrop"></div>
-  <div class="modal-sheet">
-    <h2>Categories</h2>
-    <ul id="category-list" class="category-list"></ul>
-    <div class="btn-row" style="margin-top:16px">
-      <button id="btn-add-category" class="secondary-btn">+ Add category</button>
-      <button id="btn-close-cats-list" class="secondary-btn">Close</button>
     </div>
   </div>
 </div>
@@ -273,26 +248,6 @@
         <button id="btn-cancel-store" class="secondary-btn">Cancel</button>
       </div>
       <button id="btn-delete-store" class="danger-btn hidden">Delete</button>
-    </div>
-  </div>
-</div>
-
-<!-- ── Category modal ── -->
-<div id="modal-category" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="modal-cat-title">
-  <div class="modal-backdrop"></div>
-  <div class="modal-sheet">
-    <h2 id="modal-cat-title">Add Category</h2>
-    <input type="hidden" id="cat-id">
-    <label class="settings-label">
-      Category name *
-      <input type="text" id="cat-name" placeholder="e.g. Produce" autocomplete="off" data-lpignore="true" data-1p-ignore data-bwignore="true">
-    </label>
-    <div class="btn-row">
-      <div class="btn-row-left">
-        <button id="btn-save-cat" class="primary-btn">Save</button>
-        <button id="btn-cancel-cat" class="secondary-btn">Cancel</button>
-      </div>
-      <button id="btn-delete-cat" class="danger-btn hidden">Delete</button>
     </div>
   </div>
 </div>
@@ -346,15 +301,6 @@
     <div class="btn-row" style="margin-top:20px">
       <button id="btn-store-picker-done" class="primary-btn">Done</button>
     </div>
-  </div>
-</div>
-
-<!-- ── Category picker modal ── -->
-<div id="modal-cat-picker" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="modal-cat-picker-title">
-  <div class="modal-backdrop" id="cat-picker-backdrop"></div>
-  <div class="modal-sheet">
-    <h2 id="modal-cat-picker-title">Choose Category</h2>
-    <ul id="cat-picker-list" class="cat-picker-list"></ul>
   </div>
 </div>
 

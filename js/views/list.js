@@ -5,19 +5,17 @@ import { showConfirm } from '../confirm.js';
 let subscription = null;
 let activeStoreFilter = null;
 let searchQuery = '';
-let _pickerCategories = [];
 let _pickerStores = [];
 let _selectedStoreIds = new Set();
 
 export function initList() {
   subscription?.unsubscribe();
   subscription = liveQuery(async () => {
-    const [items, stores, categories] = await Promise.all([
+    const [items, stores] = await Promise.all([
       db.items.filter(i => !i.deletedAt).toArray(),
       db.stores.filter(s => !s.deletedAt).sortBy('sortOrder'),
-      db.categories.filter(c => !c.deletedAt).sortBy('sortOrder'),
     ]);
-    return { items, stores, categories };
+    return { items, stores };
   }).subscribe({ next: render, error: console.error });
 
   document.getElementById('btn-add-item').onclick = () => openItemModal(null);
@@ -25,8 +23,6 @@ export function initList() {
   document.getElementById('btn-archive-item').onclick = archiveItem;
   document.getElementById('btn-cancel-item').onclick = closeItemModal;
   document.querySelector('#modal-item .modal-backdrop').onclick = closeItemModal;
-  document.getElementById('btn-pick-category').onclick = openCatPicker;
-  document.getElementById('cat-picker-backdrop').onclick = closeCatPicker;
   document.getElementById('btn-pick-stores').onclick = openStorePicker;
   document.getElementById('store-picker-backdrop').onclick = closeStorePicker;
   document.getElementById('btn-store-picker-done').onclick = closeStorePicker;
@@ -78,9 +74,8 @@ function makeChip(label, storeId, colour) {
 
 function reRenderItems() {
   if (!_lastData) return;
-  const { items, stores, categories } = _lastData;
+  const { items, stores } = _lastData;
   const storeMap = Object.fromEntries(stores.map(s => [s.id, s]));
-  const catMap   = Object.fromEntries(categories.map(c => [c.id, c]));
 
   const matchesFilter = item => {
     if (activeStoreFilter !== null && !(item.storeIds || []).includes(activeStoreFilter)) return false;
@@ -101,14 +96,14 @@ function reRenderItems() {
     return;
   }
 
-  active.forEach(item => ul.appendChild(makeItemRow(item, storeMap, catMap, false)));
+  active.forEach(item => ul.appendChild(makeItemRow(item, storeMap, false)));
 
   if (bought.length) {
     const divider = document.createElement('li');
     divider.className = 'bought-divider';
     divider.textContent = 'Recently bought — tap to re-add';
     ul.appendChild(divider);
-    bought.forEach(item => ul.appendChild(makeItemRow(item, storeMap, catMap, true)));
+    bought.forEach(item => ul.appendChild(makeItemRow(item, storeMap, true)));
   }
 }
 
@@ -126,7 +121,7 @@ function storeInitials(name) {
     .replace(/ & /g, '&');
 }
 
-function makeItemRow(item, storeMap, catMap, isBought) {
+function makeItemRow(item, storeMap, isBought) {
   const li = document.createElement('li');
   li.className = 'item-row' + (isBought ? ' item-row--bought' : '');
   const tags = (item.storeIds || []).map(sid => {
@@ -161,10 +156,7 @@ async function reAddItem(id) {
 }
 
 async function openItemModal(item) {
-  const [stores, categories] = await Promise.all([
-    db.stores.filter(s => !s.deletedAt).sortBy('sortOrder'),
-    db.categories.filter(c => !c.deletedAt).sortBy('sortOrder'),
-  ]);
+  const stores = await db.stores.filter(s => !s.deletedAt).sortBy('sortOrder');
 
   document.getElementById('modal-item-title').textContent = item ? 'Edit Item' : 'Add Item';
   document.getElementById('item-id').value = item?.id ?? '';
@@ -173,11 +165,6 @@ async function openItemModal(item) {
   document.getElementById('item-unit').value = item?.unit ?? '';
   document.getElementById('item-notes').value = item?.notes ?? '';
   document.getElementById('btn-archive-item').classList.toggle('hidden', !item);
-
-  _pickerCategories = categories;
-  const selectedCat = item?.categoryId ? categories.find(c => c.id === item.categoryId) : null;
-  document.getElementById('item-category').value = selectedCat?.id ?? '';
-  document.getElementById('btn-pick-category').textContent = selectedCat?.name ?? '— no category —';
 
   _pickerStores = stores;
   _selectedStoreIds = new Set((item?.storeIds || []).map(Number));
@@ -236,44 +223,11 @@ function closeStorePicker() {
   document.getElementById('modal-store-picker').classList.add('hidden');
 }
 
-function openCatPicker() {
-  const currentVal = document.getElementById('item-category').value;
-  const list = document.getElementById('cat-picker-list');
-  list.innerHTML = '';
-
-  const none = document.createElement('li');
-  none.textContent = '— no category —';
-  if (!currentVal) none.classList.add('cat-picker-selected');
-  none.onclick = () => selectCategory('', '— no category —');
-  list.appendChild(none);
-
-  _pickerCategories.forEach(c => {
-    const li = document.createElement('li');
-    li.textContent = c.name;
-    if (String(c.id) === String(currentVal)) li.classList.add('cat-picker-selected');
-    li.onclick = () => selectCategory(c.id, c.name);
-    list.appendChild(li);
-  });
-
-  document.getElementById('modal-cat-picker').classList.remove('hidden');
-}
-
-function selectCategory(id, name) {
-  document.getElementById('item-category').value = id;
-  document.getElementById('btn-pick-category').textContent = name;
-  closeCatPicker();
-}
-
-function closeCatPicker() {
-  document.getElementById('modal-cat-picker').classList.add('hidden');
-}
-
 async function saveItem() {
   const name = document.getElementById('item-name').value.trim();
   if (!name) { document.getElementById('item-name').focus(); return; }
   const id = document.getElementById('item-id').value;
   const storeIds = [..._selectedStoreIds];
-  const catVal = document.getElementById('item-category').value;
   const t = now();
 
   const data = {
@@ -281,7 +235,6 @@ async function saveItem() {
     quantity:   document.getElementById('item-qty').value.trim()  || null,
     unit:       document.getElementById('item-unit').value.trim() || null,
     notes:      document.getElementById('item-notes').value.trim() || null,
-    categoryId: catVal ? Number(catVal) : null,
     storeIds,
     updatedAt:  t,
   };
