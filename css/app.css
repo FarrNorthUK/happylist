@@ -223,6 +223,8 @@ body {
 .item-name { font-weight: 700; font-size: 1rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex-shrink: 1; min-width: 0; }
 .item-tags { display: flex; gap: 4px; align-items: center; flex-shrink: 0; }
 .item-meta { font-size: .85rem; color: var(--grey-4); margin-top: 1px; }
+.item-inline-tag { font-size: .75rem; color: var(--grey-4); font-weight: 400; white-space: nowrap; flex-shrink: 0; }
+.item-notes { font-size: .82rem; color: var(--grey-4); margin-top: 3px; }
 .store-tag {
   display: inline-flex;
   align-items: center;

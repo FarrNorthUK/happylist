@@ -128,14 +128,16 @@ function makeItemRow(item, storeMap, isBought) {
     const s = storeMap[sid];
     return s ? `<span class="store-tag" style="background:${storeBg(s)}">${esc(storeInitials(s.name))}</span>` : '';
   }).join('');
-  const meta = [item.quantity, item.unit].filter(Boolean).join(' ');
+  const qtyTag  = item.quantity ? `<span class="item-inline-tag">(Qty ${esc(item.quantity)})</span>` : '';
+  const unitTag = item.unit     ? `<span class="item-inline-tag">(Size ${esc(item.unit)})</span>`     : '';
   li.innerHTML = `
     ${isBought ? '<button class="readd-btn">Add</button>' : ''}
     <div class="item-main">
       <div class="item-name-row">
         <span class="item-name">${esc(item.name)}</span>
+        ${qtyTag}${unitTag}
       </div>
-      ${meta ? `<div class="item-meta">${esc(meta)}</div>` : ''}
+      ${item.notes ? `<div class="item-notes">${esc(item.notes)}</div>` : ''}
     </div>
     ${tags ? `<div class="item-tags">${tags}</div>` : ''}`;
 

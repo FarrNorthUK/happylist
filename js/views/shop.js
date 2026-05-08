@@ -155,21 +155,39 @@ function makeDivider(text, muted) {
 
 function makeRunRow(item, section) {
   const li = document.createElement('li');
-  const meta = [item.quantity, item.unit].filter(Boolean).join(' ');
 
   const main = document.createElement('div');
   main.className = 'item-main';
 
+  const nameRow = document.createElement('div');
+  nameRow.className = 'item-name-row';
+
   const nameSpan = document.createElement('span');
   nameSpan.className = 'item-name';
   nameSpan.textContent = item.name;
-  main.appendChild(nameSpan);
+  nameRow.appendChild(nameSpan);
 
-  if (meta) {
-    const metaDiv = document.createElement('div');
-    metaDiv.className = 'item-meta';
-    metaDiv.textContent = meta;
-    main.appendChild(metaDiv);
+  if (item.quantity) {
+    const qtySpan = document.createElement('span');
+    qtySpan.className = 'item-inline-tag';
+    qtySpan.textContent = `(Qty ${item.quantity})`;
+    nameRow.appendChild(qtySpan);
+  }
+
+  if (item.unit) {
+    const unitSpan = document.createElement('span');
+    unitSpan.className = 'item-inline-tag';
+    unitSpan.textContent = `(Size ${item.unit})`;
+    nameRow.appendChild(unitSpan);
+  }
+
+  main.appendChild(nameRow);
+
+  if (item.notes) {
+    const notesDiv = document.createElement('div');
+    notesDiv.className = 'item-notes';
+    notesDiv.textContent = item.notes;
+    main.appendChild(notesDiv);
   }
 
   li.appendChild(main);
