@@ -176,15 +176,13 @@ function makeRunRow(item, section) {
 
   if (section === 'prev') {
     li.className = 'item-row item-row--bought';
-    const btn = document.createElement('button');
-    btn.className = 'readd-btn';
-    btn.textContent = 'Add';
-    btn.onclick = async e => {
-      e.stopPropagation();
-      await db.items.update(item.id, { boughtAt: null, updatedAt: now() });
-      triggerSyncSoon();
+    li.onclick = async () => {
+      const ok = await showConfirm(`Add "${item.name}" back to your list?`, { confirmText: 'Add to list' });
+      if (ok) {
+        await db.items.update(item.id, { boughtAt: null, updatedAt: now() });
+        triggerSyncSoon();
+      }
     };
-    li.appendChild(btn);
   } else if (section === 'ticked') {
     li.className = 'item-row item-row--bought';
     const check = document.createElement('div');
@@ -232,15 +230,17 @@ async function finishTrip() {
 
   let itemsSaved = false;
   if (checkedNow.length > 0) {
-    const save = await showConfirm(
-      `Save ${checkedNow.length} checked item${checkedNow.length !== 1 ? 's' : ''} as purchased?`,
-      { confirmText: 'Save' }
+    const result = await showConfirm(
+      `You have ${checkedNow.length} ticked item${checkedNow.length !== 1 ? 's' : ''}. Save as purchased before leaving?`,
+      { confirmText: 'Save & Leave', thirdText: 'Leave without saving' }
     );
-    if (!save) return;
-    await Promise.all(checkedNow.map(ci =>
-      db.items.update(ci.itemId, { boughtAt: t, updatedAt: t })
-    ));
-    itemsSaved = true;
+    if (result === false) return;
+    if (result === true) {
+      await Promise.all(checkedNow.map(ci =>
+        db.items.update(ci.itemId, { boughtAt: t, updatedAt: t })
+      ));
+      itemsSaved = true;
+    }
   }
 
   await db.shoppingRuns.update(currentRunId, { completedAt: t, updatedAt: t });
