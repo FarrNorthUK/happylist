@@ -213,7 +213,6 @@ body {
 .item-row:active { background: var(--grey-1); }
 .item-row--bought {
   opacity: 0.45;
-  text-decoration: line-through;
 }
 .item-main { flex: 1; min-width: 0; }
 .item-name-row {
@@ -250,19 +249,6 @@ body {
 }
 
 /* ── Bought items ── */
-.readd-btn {
-  flex-shrink: 0;
-  background: var(--blue);
-  color: #fff;
-  border: none;
-  border-radius: 8px;
-  padding: 6px 16px;
-  font-size: .9rem;
-  font-weight: 700;
-  cursor: pointer;
-  white-space: nowrap;
-}
-.readd-btn:active { opacity: .75; }
 .bought-divider {
   padding: 14px 20px 6px;
   font-size: .85rem;
@@ -543,7 +529,11 @@ body {
 .secondary-btn { background: var(--grey-2); color: var(--text); }
 .secondary-btn:active { filter: brightness(.92); }
 .danger-btn    { background: var(--red); color: #fff; }
+.warn-btn      { background: #f59e0b; color: #fff; }
+.warn-btn:active { filter: brightness(.9); }
 .text-btn      { background: none; color: var(--blue); padding: 6px 8px; font-size: .9rem; min-height: auto; }
+#btn-confirm-third { display: none; width: 100%; margin-top: 8px; }
+#btn-confirm-third.visible { display: block; }
 
 .icon-btn {
   background: none;
