@@ -131,7 +131,7 @@ function makeItemRow(item, storeMap, isBought) {
   const qtyTag  = item.quantity ? `<span class="item-inline-tag">(Qty ${esc(item.quantity)})</span>` : '';
   const unitTag = item.unit     ? `<span class="item-inline-tag">(Size ${esc(item.unit)})</span>`     : '';
   li.innerHTML = `
-    ${isBought ? '<button class="readd-btn">Add</button>' : ''}
+    ${isBought ? '<button class="primary-btn">Add</button>' : ''}
     <div class="item-main">
       <div class="item-name-row">
         <span class="item-name">${esc(item.name)}</span>
@@ -143,7 +143,7 @@ function makeItemRow(item, storeMap, isBought) {
 
   li.onclick = () => openItemModal(item);
   if (isBought) {
-    li.querySelector('.readd-btn').onclick = async e => {
+    li.querySelector('.primary-btn').onclick = async e => {
       e.stopPropagation();
       if (!await showConfirm(`Add "${item.name}" back to list?`, { confirmText: 'Add' })) return;
       reAddItem(item.id);
