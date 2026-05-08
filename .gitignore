@@ -1,7 +1,4 @@
 Thumbs.db
-.DS_Store
-.vscode/
-.claude/
-CLAUDE.md
-.memsearch/
+*.md
 docs/
+.*/
