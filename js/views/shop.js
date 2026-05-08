@@ -250,7 +250,7 @@ async function finishTrip() {
   if (checkedNow.length > 0) {
     const result = await showConfirm(
       `You have ${checkedNow.length} ticked item${checkedNow.length !== 1 ? 's' : ''}. Save as purchased before leaving?`,
-      { confirmText: 'Save & Leave', thirdText: 'Leave without saving' }
+      { confirmText: 'Save & Leave', thirdText: 'Just Leave' }
     );
     if (result === false) return;
     if (result === true) {
