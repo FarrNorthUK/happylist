@@ -516,7 +516,7 @@ body {
 .btn-row { display: flex; justify-content: space-between; align-items: center; gap: 10px; margin-bottom: 14px; }
 .btn-row-left { display: flex; gap: 10px; }
 
-.primary-btn, .secondary-btn, .danger-btn, .text-btn {
+.primary-btn, .secondary-btn, .danger-btn, .warn-btn, .text-btn {
   padding: 12px 22px;
   border-radius: 10px;
   font-size: 1rem;
