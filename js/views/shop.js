@@ -118,18 +118,14 @@ function renderRunView({ allStoreItems, checkedNow }) {
     .filter(i => checkedSet.has(i.id) && !i.removedAt)
     .sort((a, b) => a.name.localeCompare(b.name));
 
-  const prevBought = allStoreItems
-    .filter(i => i.boughtAt && !i.removedAt && !checkedSet.has(i.id))
-    .sort((a, b) => a.name.localeCompare(b.name));
-
-  const removed = allStoreItems
-    .filter(i => i.removedAt)
+  const inactive = allStoreItems
+    .filter(i => (i.boughtAt && !i.removedAt && !checkedSet.has(i.id)) || i.removedAt)
     .sort((a, b) => a.name.localeCompare(b.name));
 
   const ul = document.getElementById('shop-checklist');
   ul.textContent = '';
 
-  if (!wanted.length && !ticked.length && !prevBought.length && !removed.length) {
+  if (!wanted.length && !ticked.length && !inactive.length) {
     const li = document.createElement('li');
     li.className = 'empty-state';
     li.textContent = 'No items for this store.';
@@ -144,14 +140,9 @@ function renderRunView({ allStoreItems, checkedNow }) {
     ticked.forEach(item => ul.appendChild(makeRunRow(item, 'ticked')));
   }
 
-  if (prevBought.length) {
-    ul.appendChild(makeDivider('— previously bought — tap to re-add —', true));
-    prevBought.forEach(item => ul.appendChild(makeRunRow(item, 'prev')));
-  }
-
-  if (removed.length) {
-    ul.appendChild(makeDivider('— removed — tap to re-add —', true));
-    removed.forEach(item => ul.appendChild(makeRunRow(item, 'removed')));
+  if (inactive.length) {
+    ul.appendChild(makeDivider('— off the list — tap to re-add —', true));
+    inactive.forEach(item => ul.appendChild(makeRunRow(item, 'inactive')));
   }
 }
 
@@ -201,12 +192,12 @@ function makeRunRow(item, section) {
 
   li.appendChild(main);
 
-  if (section === 'prev' || section === 'removed') {
-    li.className = 'item-row item-row--bought';
+  if (section === 'inactive') {
+    li.className = 'item-row';
     li.onclick = async () => {
       const ok = await showConfirm(`Add "${item.name}" back to your list?`, { confirmText: 'Add to list' });
       if (ok) {
-        await db.items.update(item.id, section === 'removed' ? { removedAt: null, updatedAt: now() } : { boughtAt: null, updatedAt: now() });
+        await db.items.update(item.id, item.removedAt ? { removedAt: null, updatedAt: now() } : { boughtAt: null, updatedAt: now() });
         triggerSyncSoon();
       }
     };

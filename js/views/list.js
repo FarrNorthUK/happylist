@@ -85,36 +85,26 @@ function reRenderItems() {
   };
 
   const active = items.filter(i => !i.boughtAt && !i.removedAt && matchesFilter(i));
-  const bought = items.filter(i =>  i.boughtAt && !i.removedAt && matchesFilter(i));
-  const removed = items.filter(i => i.removedAt && matchesFilter(i));
+  const inactive = items.filter(i => (i.boughtAt || i.removedAt) && matchesFilter(i));
   active.sort((a, b) => a.name.localeCompare(b.name));
-  bought.sort((a, b) => a.name.localeCompare(b.name));
-  removed.sort((a, b) => a.name.localeCompare(b.name));
+  inactive.sort((a, b) => a.name.localeCompare(b.name));
 
   const ul = document.getElementById('item-list');
   ul.innerHTML = '';
 
-  if (!active.length && !bought.length && !removed.length) {
+  if (!active.length && !inactive.length) {
     ul.innerHTML = `<li class="empty-state">${items.length ? 'No items match the filter.' : 'No items yet.\nTap + to add one.'}</li>`;
     return;
   }
 
-  active.forEach(item => ul.appendChild(makeItemRow(item, storeMap, false)));
+  active.forEach(item => ul.appendChild(makeItemRow(item, storeMap)));
 
-  if (bought.length) {
+  if (inactive.length) {
     const divider = document.createElement('li');
-    divider.className = 'bought-divider';
-    divider.textContent = 'Recently bought — tap to re-add';
+    divider.className = 'inactive-divider';
+    divider.textContent = 'Off the list — tap to re-add';
     ul.appendChild(divider);
-    bought.forEach(item => ul.appendChild(makeItemRow(item, storeMap, true)));
-  }
-
-  if (removed.length) {
-    const divider = document.createElement('li');
-    divider.className = 'bought-divider';
-    divider.textContent = 'Removed — tap to re-add';
-    ul.appendChild(divider);
-    removed.forEach(item => ul.appendChild(makeItemRow(item, storeMap, false, true)));
+    inactive.forEach(item => ul.appendChild(makeItemRow(item, storeMap)));
   }
 }
 
@@ -132,10 +122,10 @@ function storeInitials(name) {
     .replace(/ & /g, '&');
 }
 
-function makeItemRow(item, storeMap, isBought, isRemoved = false) {
-  const isInactive = isBought || isRemoved;
+function makeItemRow(item, storeMap) {
+  const isInactive = !!(item.boughtAt || item.removedAt);
   const li = document.createElement('li');
-  li.className = 'item-row' + (isInactive ? ' item-row--bought' : '');
+  li.className = 'item-row';
   const tags = (item.storeIds || []).map(sid => {
     const s = storeMap[sid];
     return s ? `<span class="store-tag" style="background:${storeBg(s)}">${esc(storeInitials(s.name))}</span>` : '';
@@ -158,7 +148,7 @@ function makeItemRow(item, storeMap, isBought, isRemoved = false) {
     li.querySelector('.primary-btn').onclick = async e => {
       e.stopPropagation();
       if (!await showConfirm(`Add "${item.name}" back to list?`, { confirmText: 'Add' })) return;
-      reAddItem(item.id, isRemoved);
+      reAddItem(item.id, !!item.removedAt);
     };
   }
   return li;

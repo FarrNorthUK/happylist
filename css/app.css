@@ -211,9 +211,6 @@ body {
   min-height: 44px;
 }
 .item-row:active { background: var(--grey-1); }
-.item-row--bought {
-  opacity: 0.45;
-}
 .item-main { flex: 1; min-width: 0; }
 .item-name-row {
   display: flex;
@@ -250,8 +247,8 @@ body {
   flex-shrink: 0;
 }
 
-/* ── Bought items ── */
-.bought-divider {
+/* ── Off-the-list items ── */
+.inactive-divider {
   padding: 14px 20px 6px;
   font-size: .85rem;
   font-weight: 700;
