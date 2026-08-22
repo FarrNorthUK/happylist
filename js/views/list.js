@@ -21,6 +21,7 @@ export function initList() {
   document.getElementById('btn-add-item').onclick = () => openItemModal(null);
   document.getElementById('btn-save-item').onclick = saveItem;
   document.getElementById('btn-archive-item').onclick = archiveItem;
+  document.getElementById('btn-remove-item').onclick = removeItem;
   document.getElementById('btn-cancel-item').onclick = closeItemModal;
   document.querySelector('#modal-item .modal-backdrop').onclick = closeItemModal;
   document.getElementById('btn-pick-stores').onclick = openStorePicker;
@@ -83,15 +84,17 @@ function reRenderItems() {
     return true;
   };
 
-  const active = items.filter(i => !i.boughtAt && matchesFilter(i));
-  const bought = items.filter(i =>  i.boughtAt && matchesFilter(i));
+  const active = items.filter(i => !i.boughtAt && !i.removedAt && matchesFilter(i));
+  const bought = items.filter(i =>  i.boughtAt && !i.removedAt && matchesFilter(i));
+  const removed = items.filter(i => i.removedAt && matchesFilter(i));
   active.sort((a, b) => a.name.localeCompare(b.name));
   bought.sort((a, b) => a.name.localeCompare(b.name));
+  removed.sort((a, b) => a.name.localeCompare(b.name));
 
   const ul = document.getElementById('item-list');
   ul.innerHTML = '';
 
-  if (!active.length && !bought.length) {
+  if (!active.length && !bought.length && !removed.length) {
     ul.innerHTML = `<li class="empty-state">${items.length ? 'No items match the filter.' : 'No items yet.\nTap + to add one.'}</li>`;
     return;
   }
@@ -104,6 +107,14 @@ function reRenderItems() {
     divider.textContent = 'Recently bought — tap to re-add';
     ul.appendChild(divider);
     bought.forEach(item => ul.appendChild(makeItemRow(item, storeMap, true)));
+  }
+
+  if (removed.length) {
+    const divider = document.createElement('li');
+    divider.className = 'bought-divider';
+    divider.textContent = 'Removed — tap to re-add';
+    ul.appendChild(divider);
+    removed.forEach(item => ul.appendChild(makeItemRow(item, storeMap, false, true)));
   }
 }
 
@@ -121,9 +132,10 @@ function storeInitials(name) {
     .replace(/ & /g, '&');
 }
 
-function makeItemRow(item, storeMap, isBought) {
+function makeItemRow(item, storeMap, isBought, isRemoved = false) {
+  const isInactive = isBought || isRemoved;
   const li = document.createElement('li');
-  li.className = 'item-row' + (isBought ? ' item-row--bought' : '');
+  li.className = 'item-row' + (isInactive ? ' item-row--bought' : '');
   const tags = (item.storeIds || []).map(sid => {
     const s = storeMap[sid];
     return s ? `<span class="store-tag" style="background:${storeBg(s)}">${esc(storeInitials(s.name))}</span>` : '';
@@ -131,7 +143,7 @@ function makeItemRow(item, storeMap, isBought) {
   const qtyTag  = item.quantity ? `<span class="item-inline-tag">(Qty ${esc(item.quantity)})</span>` : '';
   const unitTag = item.unit     ? `<span class="item-inline-tag">(Size ${esc(item.unit)})</span>`     : '';
   li.innerHTML = `
-    ${isBought ? '<button class="primary-btn">Add</button>' : ''}
+    ${isInactive ? '<button class="primary-btn">Add</button>' : ''}
     <div class="item-main">
       <div class="item-name-row">
         <span class="item-name">${esc(item.name)}</span>
@@ -142,18 +154,18 @@ function makeItemRow(item, storeMap, isBought) {
     ${tags ? `<div class="item-tags">${tags}</div>` : ''}`;
 
   li.onclick = () => openItemModal(item);
-  if (isBought) {
+  if (isInactive) {
     li.querySelector('.primary-btn').onclick = async e => {
       e.stopPropagation();
       if (!await showConfirm(`Add "${item.name}" back to list?`, { confirmText: 'Add' })) return;
-      reAddItem(item.id);
+      reAddItem(item.id, isRemoved);
     };
   }
   return li;
 }
 
-async function reAddItem(id) {
-  await db.items.update(id, { boughtAt: null, updatedAt: now() });
+async function reAddItem(id, isRemoved) {
+  await db.items.update(id, isRemoved ? { removedAt: null, updatedAt: now() } : { boughtAt: null, updatedAt: now() });
   triggerSyncSoon();
 }
 
@@ -167,6 +179,7 @@ async function openItemModal(item) {
   document.getElementById('item-unit').value = item?.unit ?? '';
   document.getElementById('item-notes').value = item?.notes ?? '';
   document.getElementById('btn-archive-item').classList.toggle('hidden', !item);
+  document.getElementById('btn-remove-item').classList.toggle('hidden', !item || !!item.removedAt);
 
   _pickerStores = stores;
   _selectedStoreIds = new Set((item?.storeIds || []).map(Number));
@@ -246,6 +259,15 @@ async function saveItem() {
   } else {
     await db.items.add({ ...data, deletedAt: null, boughtAt: null });
   }
+  triggerSyncSoon();
+  closeItemModal();
+}
+
+async function removeItem() {
+  const id = Number(document.getElementById('item-id').value);
+  if (!id) return;
+  if (!await showConfirm('Remove from list? Item stays saved — re-add it from Removed.', { confirmText: 'Remove' })) return;
+  await db.items.update(id, { removedAt: now(), boughtAt: null, updatedAt: now() });
   triggerSyncSoon();
   closeItemModal();
 }

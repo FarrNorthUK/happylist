@@ -170,7 +170,7 @@ async function renderList(stores) {
 }
 
 async function getItemCounts() {
-  const items = await db.items.filter(i => !i.deletedAt).toArray();
+  const items = await db.items.filter(i => !i.deletedAt && !i.removedAt).toArray();
   const counts = {};
   items.forEach(item => {
     (item.storeIds || []).forEach(sid => { counts[sid] = (counts[sid] ?? 0) + 1; });

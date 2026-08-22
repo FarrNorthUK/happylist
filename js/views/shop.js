@@ -35,8 +35,8 @@ async function renderStoreGrid() {
     return;
   }
 
-  // Count only active (not bought) items per store
-  const items = await db.items.filter(i => !i.deletedAt && !i.boughtAt).toArray();
+  // Count only active (not bought, not removed) items per store
+  const items = await db.items.filter(i => !i.deletedAt && !i.boughtAt && !i.removedAt).toArray();
   const counts = {};
   items.forEach(item => (item.storeIds || []).forEach(sid => { counts[sid] = (counts[sid] ?? 0) + 1; }));
 
@@ -111,21 +111,25 @@ function renderRunView({ allStoreItems, checkedNow }) {
   const checkedSet = new Set(checkedNow.map(ci => ci.itemId));
 
   const wanted = allStoreItems
-    .filter(i => !i.boughtAt && !checkedSet.has(i.id))
+    .filter(i => !i.boughtAt && !i.removedAt && !checkedSet.has(i.id))
     .sort((a, b) => a.name.localeCompare(b.name));
 
   const ticked = allStoreItems
-    .filter(i => checkedSet.has(i.id))
+    .filter(i => checkedSet.has(i.id) && !i.removedAt)
     .sort((a, b) => a.name.localeCompare(b.name));
 
   const prevBought = allStoreItems
-    .filter(i => i.boughtAt && !checkedSet.has(i.id))
+    .filter(i => i.boughtAt && !i.removedAt && !checkedSet.has(i.id))
+    .sort((a, b) => a.name.localeCompare(b.name));
+
+  const removed = allStoreItems
+    .filter(i => i.removedAt)
     .sort((a, b) => a.name.localeCompare(b.name));
 
   const ul = document.getElementById('shop-checklist');
   ul.textContent = '';
 
-  if (!wanted.length && !ticked.length && !prevBought.length) {
+  if (!wanted.length && !ticked.length && !prevBought.length && !removed.length) {
     const li = document.createElement('li');
     li.className = 'empty-state';
     li.textContent = 'No items for this store.';
@@ -143,6 +147,11 @@ function renderRunView({ allStoreItems, checkedNow }) {
   if (prevBought.length) {
     ul.appendChild(makeDivider('— previously bought — tap to re-add —', true));
     prevBought.forEach(item => ul.appendChild(makeRunRow(item, 'prev')));
+  }
+
+  if (removed.length) {
+    ul.appendChild(makeDivider('— removed — tap to re-add —', true));
+    removed.forEach(item => ul.appendChild(makeRunRow(item, 'removed')));
   }
 }
 
@@ -192,12 +201,12 @@ function makeRunRow(item, section) {
 
   li.appendChild(main);
 
-  if (section === 'prev') {
+  if (section === 'prev' || section === 'removed') {
     li.className = 'item-row item-row--bought';
     li.onclick = async () => {
       const ok = await showConfirm(`Add "${item.name}" back to your list?`, { confirmText: 'Add to list' });
       if (ok) {
-        await db.items.update(item.id, { boughtAt: null, updatedAt: now() });
+        await db.items.update(item.id, section === 'removed' ? { removedAt: null, updatedAt: now() } : { boughtAt: null, updatedAt: now() });
         triggerSyncSoon();
       }
     };
@@ -246,23 +255,24 @@ async function finishTrip() {
     .filter(ci => ci.runId === currentRunId && !ci.deletedAt)
     .toArray();
 
-  let itemsSaved = false;
-  if (checkedNow.length > 0) {
+  const removedIds = new Set((await db.items.filter(i => i.removedAt).toArray()).map(i => i.id));
+  const savable = checkedNow.filter(ci => !removedIds.has(ci.itemId));
+
+  if (savable.length > 0) {
     const result = await showConfirm(
-      `You have ${checkedNow.length} ticked item${checkedNow.length !== 1 ? 's' : ''}. Save as purchased before leaving?`,
+      `You have ${savable.length} ticked item${savable.length !== 1 ? 's' : ''}. Save as purchased before leaving?`,
       { confirmText: 'Save & Leave', thirdText: 'Just Leave' }
     );
     if (result === false) return;
     if (result === true) {
-      await Promise.all(checkedNow.map(ci =>
+      await Promise.all(savable.map(ci =>
         db.items.update(ci.itemId, { boughtAt: t, updatedAt: t })
       ));
-      itemsSaved = true;
     }
   }
 
   await db.shoppingRuns.update(currentRunId, { completedAt: t, updatedAt: t });
-  if (itemsSaved) triggerSyncSoon();
+  triggerSyncSoon();
   showGrid();
 }
 
