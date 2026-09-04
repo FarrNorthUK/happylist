@@ -4,6 +4,7 @@ import { initStores }             from './views/stores.js';
 import { initShop, resetShopToGrid } from './views/shop.js';
 import { initSettings, updateSyncStatus } from './views/settings.js';
 import { flushSync }                      from './sync.js';
+import { createUpdateChecker, fetchVersionFromNetwork } from './update.js';
 
 // ── Service Worker registration ──
 if ('serviceWorker' in navigator) {
@@ -111,17 +112,15 @@ window.addEventListener('happylist:mutated', () => {
 // ── Update check ──
 const APP_VERSION = 'dev';
 
+const updateChecker = createUpdateChecker({
+  currentVersion: APP_VERSION,
+  fetchVersion: fetchVersionFromNetwork,
+});
+
 export async function checkForUpdate() {
-  if (APP_VERSION === 'dev') return;
-  try {
-    const res = await fetch(`./version.json?t=${Date.now()}`, { cache: 'reload' });
-    if (!res.ok) return;
-    const { version } = await res.json();
-    if (version && version !== APP_VERSION) {
-      document.getElementById('update-banner')?.classList.remove('hidden');
-    }
-  } catch (err) {
-    console.warn('[update-check] failed:', err);
+  const { updateAvailable } = await updateChecker.check();
+  if (updateAvailable) {
+    document.getElementById('update-banner')?.classList.remove('hidden');
   }
 }
 
