@@ -1,6 +1,10 @@
-import db, { now } from '../db.js';
-import { liveQuery } from 'https://cdn.jsdelivr.net/npm/dexie@4/dist/dexie.mjs';
+import db from '../db.js';
+import { liveQuery } from 'dexie';
 import { showConfirm } from '../confirm.js';
+import {
+  isArchived, isRemoved, isActive, isInactive,
+  upsertItem, removeFromList, reactivateItem, softDelete,
+} from '../data.js';
 
 let subscription = null;
 let activeStoreFilter = null;
@@ -12,8 +16,8 @@ export function initList() {
   subscription?.unsubscribe();
   subscription = liveQuery(async () => {
     const [items, stores] = await Promise.all([
-      db.items.filter(i => !i.deletedAt).toArray(),
-      db.stores.filter(s => !s.deletedAt).sortBy('sortOrder'),
+      db.items.filter(i => !isArchived(i)).toArray(),
+      db.stores.filter(s => !isArchived(s)).sortBy('sortOrder'),
     ]);
     return { items, stores };
   }).subscribe({ next: render, error: console.error });
@@ -84,8 +88,8 @@ function reRenderItems() {
     return true;
   };
 
-  const active = items.filter(i => !i.boughtAt && !i.removedAt && matchesFilter(i));
-  const inactive = items.filter(i => (i.boughtAt || i.removedAt) && matchesFilter(i));
+  const active = items.filter(i => isActive(i) && matchesFilter(i));
+  const inactive = items.filter(i => isInactive(i) && matchesFilter(i));
   active.sort((a, b) => a.name.localeCompare(b.name));
   inactive.sort((a, b) => a.name.localeCompare(b.name));
 
@@ -123,7 +127,7 @@ function storeInitials(name) {
 }
 
 function makeItemRow(item, storeMap) {
-  const isInactive = !!(item.boughtAt || item.removedAt);
+  const offList = isInactive(item);
   const li = document.createElement('li');
   li.className = 'item-row';
   const tags = (item.storeIds || []).map(sid => {
@@ -133,7 +137,7 @@ function makeItemRow(item, storeMap) {
   const qtyTag  = item.quantity ? `<span class="item-inline-tag">(Qty ${esc(item.quantity)})</span>` : '';
   const unitTag = item.unit     ? `<span class="item-inline-tag">(Size ${esc(item.unit)})</span>`     : '';
   li.innerHTML = `
-    ${isInactive ? '<button class="primary-btn">Add</button>' : ''}
+    ${offList ? '<button class="primary-btn">Add</button>' : ''}
     <div class="item-main">
       <div class="item-name-row">
         <span class="item-name">${esc(item.name)}</span>
@@ -144,23 +148,18 @@ function makeItemRow(item, storeMap) {
     ${tags ? `<div class="item-tags">${tags}</div>` : ''}`;
 
   li.onclick = () => openItemModal(item);
-  if (isInactive) {
+  if (offList) {
     li.querySelector('.primary-btn').onclick = async e => {
       e.stopPropagation();
       if (!await showConfirm(`Add "${item.name}" back to list?`, { confirmText: 'Add' })) return;
-      reAddItem(item.id, !!item.removedAt);
+      await reactivateItem(item.id);
     };
   }
   return li;
 }
 
-async function reAddItem(id, isRemoved) {
-  await db.items.update(id, isRemoved ? { removedAt: null, updatedAt: now() } : { boughtAt: null, updatedAt: now() });
-  triggerSyncSoon();
-}
-
 async function openItemModal(item) {
-  const stores = await db.stores.filter(s => !s.deletedAt).sortBy('sortOrder');
+  const stores = await db.stores.filter(s => !isArchived(s)).sortBy('sortOrder');
 
   document.getElementById('modal-item-title').textContent = item ? 'Edit Item' : 'Add Item';
   document.getElementById('item-id').value = item?.id ?? '';
@@ -169,7 +168,7 @@ async function openItemModal(item) {
   document.getElementById('item-unit').value = item?.unit ?? '';
   document.getElementById('item-notes').value = item?.notes ?? '';
   document.getElementById('btn-archive-item').classList.toggle('hidden', !item);
-  document.getElementById('btn-remove-item').classList.toggle('hidden', !item || !!item.removedAt);
+  document.getElementById('btn-remove-item').classList.toggle('hidden', !item || isRemoved(item));
 
   _pickerStores = stores;
   _selectedStoreIds = new Set((item?.storeIds || []).map(Number));
@@ -233,23 +232,16 @@ async function saveItem() {
   if (!name) { document.getElementById('item-name').focus(); return; }
   const id = document.getElementById('item-id').value;
   const storeIds = [..._selectedStoreIds];
-  const t = now();
 
-  const data = {
+  const fields = {
     name,
     quantity:   document.getElementById('item-qty').value.trim()  || null,
     unit:       document.getElementById('item-unit').value.trim() || null,
     notes:      document.getElementById('item-notes').value.trim() || null,
     storeIds,
-    updatedAt:  t,
   };
 
-  if (id) {
-    await db.items.update(Number(id), data);
-  } else {
-    await db.items.add({ ...data, deletedAt: null, boughtAt: null });
-  }
-  triggerSyncSoon();
+  await upsertItem(id ? Number(id) : null, fields);
   closeItemModal();
 }
 
@@ -257,8 +249,7 @@ async function removeItem() {
   const id = Number(document.getElementById('item-id').value);
   if (!id) return;
   if (!await showConfirm('Remove from list? Item stays saved — re-add it from Removed.', { confirmText: 'Remove' })) return;
-  await db.items.update(id, { removedAt: now(), boughtAt: null, updatedAt: now() });
-  triggerSyncSoon();
+  await removeFromList(id);
   closeItemModal();
 }
 
@@ -266,13 +257,8 @@ async function archiveItem() {
   const id = Number(document.getElementById('item-id').value);
   if (!id) return;
   if (!await showConfirm('Delete this item?', { confirmText: 'Delete', danger: true })) return;
-  await db.items.update(id, { deletedAt: now(), updatedAt: now() });
-  triggerSyncSoon();
+  await softDelete('items', id);
   closeItemModal();
-}
-
-function triggerSyncSoon() {
-  window.dispatchEvent(new CustomEvent('happylist:mutated'));
 }
 
 function esc(str) {

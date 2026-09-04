@@ -1,7 +1,11 @@
 import db, { now } from '../db.js';
-import { liveQuery } from 'https://cdn.jsdelivr.net/npm/dexie@4/dist/dexie.mjs';
+import { liveQuery } from 'dexie';
 import { showConfirm } from '../confirm.js';
 import { showBarcode } from './stores.js';
+import {
+  isArchived, isBought, isRemoved, isActive, storeCounts,
+  addRow, mutateRow, softDelete, buyItem, reactivateItem,
+} from '../data.js';
 
 let currentRunId = null;
 let currentStoreId = null;
@@ -27,7 +31,7 @@ function storeBg(store) {
 }
 
 async function renderStoreGrid() {
-  const stores = await db.stores.filter(s => !s.deletedAt).sortBy('sortOrder');
+  const stores = await db.stores.filter(s => !isArchived(s)).sortBy('sortOrder');
   const grid = document.getElementById('shop-store-grid');
 
   if (!stores.length) {
@@ -36,9 +40,8 @@ async function renderStoreGrid() {
   }
 
   // Count only active (not bought, not removed) items per store
-  const items = await db.items.filter(i => !i.deletedAt && !i.boughtAt && !i.removedAt).toArray();
-  const counts = {};
-  items.forEach(item => (item.storeIds || []).forEach(sid => { counts[sid] = (counts[sid] ?? 0) + 1; }));
+  const items = await db.items.filter(isActive).toArray();
+  const counts = storeCounts(items);
 
   grid.innerHTML = '';
   stores.forEach(store => {
@@ -72,17 +75,11 @@ async function startRun(store) {
   _currentStore = store;
 
   let run = await db.shoppingRuns
-    .filter(r => r.storeId === store.id && !r.completedAt && !r.deletedAt)
+    .filter(r => r.storeId === store.id && !r.completedAt && !isArchived(r))
     .first();
 
   if (!run) {
-    const id = await db.shoppingRuns.add({
-      storeId: store.id,
-      startedAt: now(),
-      completedAt: null,
-      updatedAt: now(),
-      deletedAt: null,
-    });
+    const id = await addRow('shoppingRuns', { storeId: store.id, startedAt: now(), completedAt: null });
     run = await db.shoppingRuns.get(id);
   }
 
@@ -100,8 +97,8 @@ function subscribeToRun() {
   subscription?.unsubscribe();
   subscription = liveQuery(async () => {
     const [allStoreItems, checkedNow] = await Promise.all([
-      db.items.filter(i => !i.deletedAt && (i.storeIds || []).includes(currentStoreId)).toArray(),
-      db.checkedItems.filter(ci => ci.runId === currentRunId && !ci.deletedAt).toArray(),
+      db.items.filter(i => !isArchived(i) && (i.storeIds || []).includes(currentStoreId)).toArray(),
+      db.checkedItems.filter(ci => ci.runId === currentRunId && !isArchived(ci)).toArray(),
     ]);
     return { allStoreItems, checkedNow };
   }).subscribe({ next: renderRunView, error: console.error });
@@ -111,15 +108,15 @@ function renderRunView({ allStoreItems, checkedNow }) {
   const checkedSet = new Set(checkedNow.map(ci => ci.itemId));
 
   const wanted = allStoreItems
-    .filter(i => !i.boughtAt && !i.removedAt && !checkedSet.has(i.id))
+    .filter(i => isActive(i) && !checkedSet.has(i.id))
     .sort((a, b) => a.name.localeCompare(b.name));
 
   const ticked = allStoreItems
-    .filter(i => checkedSet.has(i.id) && !i.removedAt)
+    .filter(i => checkedSet.has(i.id) && !isRemoved(i))
     .sort((a, b) => a.name.localeCompare(b.name));
 
   const inactive = allStoreItems
-    .filter(i => (i.boughtAt && !i.removedAt && !checkedSet.has(i.id)) || i.removedAt)
+    .filter(i => (isBought(i) && !isRemoved(i) && !checkedSet.has(i.id)) || isRemoved(i))
     .sort((a, b) => a.name.localeCompare(b.name));
 
   const ul = document.getElementById('shop-checklist');
@@ -196,10 +193,7 @@ function makeRunRow(item, section) {
     li.className = 'item-row';
     li.onclick = async () => {
       const ok = await showConfirm(`Add "${item.name}" back to your list?`, { confirmText: 'Add to list' });
-      if (ok) {
-        await db.items.update(item.id, item.removedAt ? { removedAt: null, updatedAt: now() } : { boughtAt: null, updatedAt: now() });
-        triggerSyncSoon();
-      }
+      if (ok) await reactivateItem(item.id);
     };
   } else if (section === 'ticked') {
     li.className = 'item-row';
@@ -221,20 +215,10 @@ function makeRunRow(item, section) {
 
 async function toggleCheck(itemId, currentlyChecked) {
   if (currentlyChecked) {
-    const ci = await db.checkedItems.filter(c => c.runId === currentRunId && c.itemId === itemId && !c.deletedAt).first();
-    if (ci) {
-      await db.checkedItems.update(ci.id, { deletedAt: now(), updatedAt: now() });
-      triggerSyncSoon();
-    }
+    const ci = await db.checkedItems.filter(c => c.runId === currentRunId && c.itemId === itemId && !isArchived(c)).first();
+    if (ci) await softDelete('checkedItems', ci.id);
   } else {
-    await db.checkedItems.add({
-      runId: currentRunId,
-      itemId,
-      checkedAt: now(),
-      updatedAt: now(),
-      deletedAt: null,
-    });
-    triggerSyncSoon();
+    await addRow('checkedItems', { runId: currentRunId, itemId, checkedAt: now() });
   }
 }
 
@@ -243,10 +227,10 @@ async function finishTrip() {
   const t = now();
 
   const checkedNow = await db.checkedItems
-    .filter(ci => ci.runId === currentRunId && !ci.deletedAt)
+    .filter(ci => ci.runId === currentRunId && !isArchived(ci))
     .toArray();
 
-  const removedIds = new Set((await db.items.filter(i => i.removedAt).toArray()).map(i => i.id));
+  const removedIds = new Set((await db.items.filter(i => isRemoved(i)).toArray()).map(i => i.id));
   const savable = checkedNow.filter(ci => !removedIds.has(ci.itemId));
 
   if (savable.length > 0) {
@@ -256,19 +240,12 @@ async function finishTrip() {
     );
     if (result === false) return;
     if (result === true) {
-      await Promise.all(savable.map(ci =>
-        db.items.update(ci.itemId, { boughtAt: t, updatedAt: t })
-      ));
+      await Promise.all(savable.map(ci => buyItem(ci.itemId)));
     }
   }
 
-  await db.shoppingRuns.update(currentRunId, { completedAt: t, updatedAt: t });
-  triggerSyncSoon();
+  await mutateRow('shoppingRuns', currentRunId, { completedAt: t });
   showGrid();
-}
-
-function triggerSyncSoon() {
-  window.dispatchEvent(new CustomEvent('happylist:mutated'));
 }
 
 function esc(str) {

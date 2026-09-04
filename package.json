@@ -1,0 +1,12 @@
+{
+  "name": "happylist",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node -e \"const B=String.fromCharCode(92);const p=process.env.INIT_CWD;const u=p.startsWith(B+B)?'file://'+p.slice(2).split(B).join('/'):'file:///'+p.split(B).join('/');import(u+'/test/run.js').catch(e=>{console.error(e);process.exit(1)})\""
+  },
+  "devDependencies": {
+    "dexie": "^4.2.0",
+    "fake-indexeddb": "^6.2.5"
+  }
+}

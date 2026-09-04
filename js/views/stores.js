@@ -1,5 +1,9 @@
-import db, { now } from '../db.js';
-import { liveQuery } from 'https://cdn.jsdelivr.net/npm/dexie@4/dist/dexie.mjs';
+import db from '../db.js';
+import { liveQuery } from 'dexie';
+import {
+  isArchived, isAssociated, storeCounts,
+  addRow, mutateRow, softDelete,
+} from '../data.js';
 
 const COLOURS = [
   '#e31837','#d81b60','#e65100','#e87722','#f57f17','#78be20','#2e7d32',
@@ -21,7 +25,7 @@ let pendingCardImage = null;
 export function initStores() {
   subscription?.unsubscribe();
   subscription = liveQuery(() =>
-    db.stores.filter(s => !s.deletedAt).sortBy('sortOrder')
+    db.stores.filter(s => !isArchived(s)).sortBy('sortOrder')
   ).subscribe({ next: renderList, error: console.error });
 
   document.getElementById('btn-add-store').onclick = () => openModal(null);
@@ -170,22 +174,16 @@ async function renderList(stores) {
 }
 
 async function getItemCounts() {
-  const items = await db.items.filter(i => !i.deletedAt && !i.removedAt).toArray();
-  const counts = {};
-  items.forEach(item => {
-    (item.storeIds || []).forEach(sid => { counts[sid] = (counts[sid] ?? 0) + 1; });
-  });
-  return counts;
+  const items = await db.items.filter(isAssociated).toArray();
+  return storeCounts(items);
 }
 
 async function reorder(stores, idx, dir) {
   const other = stores[idx + dir];
   const current = stores[idx];
   if (!other) return;
-  const t = now();
-  await db.stores.update(current.id, { sortOrder: other.sortOrder, updatedAt: t });
-  await db.stores.update(other.id, { sortOrder: current.sortOrder, updatedAt: t });
-  triggerSyncSoon();
+  await mutateRow('stores', current.id, { sortOrder: other.sortOrder });
+  await mutateRow('stores', other.id, { sortOrder: current.sortOrder });
 }
 
 function openModal(store) {
@@ -282,15 +280,15 @@ async function saveStore() {
   const cardNumber = document.getElementById('store-card-number').value || null;
   const cardFormat = document.getElementById('store-card-format').value || null;
   const cardImage = pendingCardImage || null;
-  const t = now();
+
+  const fields = { name, colour, colour2, cardNumber, cardFormat, cardImage };
 
   if (id) {
-    await db.stores.update(Number(id), { name, colour, colour2, cardNumber, cardFormat, cardImage, updatedAt: t });
+    await mutateRow('stores', Number(id), fields);
   } else {
     const maxOrder = await db.stores.orderBy('sortOrder').last();
-    await db.stores.add({ name, colour, colour2, cardNumber, cardFormat, cardImage, sortOrder: (maxOrder?.sortOrder ?? -1) + 1, updatedAt: t, deletedAt: null });
+    await addRow('stores', { ...fields, sortOrder: (maxOrder?.sortOrder ?? -1) + 1 });
   }
-  triggerSyncSoon();
   closeModal();
 }
 
@@ -301,17 +299,12 @@ async function deleteStore() {
   if (!store) return;
 
   // Remove this store from all items that reference it
-  const affected = await db.items.filter(i => !i.deletedAt && (i.storeIds || []).includes(id)).toArray();
-  const t = now();
+  const affected = await db.items.filter(i => !isArchived(i) && (i.storeIds || []).includes(id)).toArray();
   await Promise.all(affected.map(item =>
-    db.items.update(item.id, {
-      storeIds: item.storeIds.filter(s => s !== id),
-      updatedAt: t,
-    })
+    mutateRow('items', item.id, { storeIds: item.storeIds.filter(s => s !== id) })
   ));
 
-  await db.stores.update(id, { deletedAt: t, updatedAt: t });
-  triggerSyncSoon();
+  await softDelete('stores', id);
   closeModal();
 }
 
@@ -385,10 +378,6 @@ export async function showBarcode(store) {
 function closeBarcodeOverlay() {
   document.getElementById('barcode-overlay').classList.add('hidden');
   screen.orientation?.unlock?.();
-}
-
-function triggerSyncSoon() {
-  window.dispatchEvent(new CustomEvent('happylist:mutated'));
 }
 
 function esc(str) {

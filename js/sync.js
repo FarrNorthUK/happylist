@@ -1,4 +1,5 @@
 import db, { getSyncMeta, setSyncMeta, now } from './db.js';
+import { importTable, putRowAsIs } from './data.js';
 
 const TABLES      = ['stores', 'items', 'shoppingRuns', 'checkedItems'];
 const FILE        = 'happylist-data.json';
@@ -188,8 +189,7 @@ export async function restoreBackup(filename) {
 
 export async function restoreFromData(data) {
   for (const table of TABLES) {
-    await db[table].clear();
-    if (data[table]?.length) await db[table].bulkPut(data[table]);
+    await importTable(table, data[table] ?? []);
   }
   return flushSync(false, true);
 }
@@ -200,14 +200,14 @@ async function mergeRemoteIntoLocal(remoteData) {
     for (const remote of remoteRows) {
       const local = await db[table].get(remote.id);
       if (!local) {
-        // New record from remote — add it
-        await db[table].put(remote);
+        // New record from remote — add it as-is (no local stamp, no sync event)
+        await putRowAsIs(table, remote);
       } else {
         // Keep whichever has the more recent updatedAt
         const localTs  = new Date(local.updatedAt  || 0).getTime();
         const remoteTs = new Date(remote.updatedAt || 0).getTime();
         if (remoteTs > localTs) {
-          await db[table].put(remote);
+          await putRowAsIs(table, remote);
         }
       }
     }

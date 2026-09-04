@@ -1,4 +1,4 @@
-import Dexie from 'https://cdn.jsdelivr.net/npm/dexie@4/dist/dexie.mjs';
+import Dexie from 'dexie';
 
 const db = new Dexie('happylist');
 
