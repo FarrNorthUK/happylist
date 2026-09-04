@@ -1,7 +1,7 @@
 import db, { now } from '../db.js';
 import { liveQuery } from 'dexie';
 import { showConfirm } from '../confirm.js';
-import { showBarcode } from './stores.js';
+import { hasCard, showCardOverlay } from '../card.js';
 import {
   isArchived, isBought, isRemoved, isActive, storeCounts,
   addRow, mutateRow, softDelete, buyItem, reactivateItem,
@@ -16,7 +16,7 @@ export function initShop() {
   renderStoreGrid();
   document.getElementById('btn-finish-trip').onclick = finishTrip;
   document.getElementById('btn-show-card').onclick = () => {
-    if (_currentStore) showBarcode(_currentStore);
+    if (_currentStore) showCardOverlay(_currentStore);
   };
 }
 
@@ -86,7 +86,7 @@ async function startRun(store) {
   currentRunId = run.id;
   document.getElementById('shop-title').textContent = store.name;
   document.getElementById('btn-finish-trip').classList.remove('hidden');
-  document.getElementById('btn-show-card').classList.toggle('hidden', !store.cardNumber);
+  document.getElementById('btn-show-card').classList.toggle('hidden', !hasCard(store));
   document.getElementById('shop-store-grid').classList.add('hidden');
   document.getElementById('shop-run-view').classList.remove('hidden');
 

@@ -4,25 +4,20 @@ import {
   isArchived, isAssociated, storeCounts,
   addRow, mutateRow, softDelete,
 } from '../data.js';
+import { CARD_FORMATS, hasCard, showCardOverlay, scanCardImage } from '../card.js';
 
 const COLOURS = [
   '#e31837','#d81b60','#e65100','#e87722','#f57f17','#78be20','#2e7d32',
   '#00796b','#0288d1','#005daa','#1a237e','#5e35b1','#6d4c41','#455a64',
 ];
 
-// BarcodeDetector format name → JsBarcode format name
-const FORMAT_MAP = {
-  ean_13: 'EAN13', ean_8: 'EAN8',
-  code_128: 'CODE128', code_39: 'CODE39',
-  upc_a: 'UPC', upc_e: 'UPC_E',
-};
-// Formats BarcodeDetector can read but JsBarcode can't render
-const DISPLAY_ONLY_FORMATS = new Set(['qr_code', 'pdf417', 'aztec', 'data_matrix']);
-
 let subscription = null;
 let pendingCardImage = null;
 
 export function initStores() {
+  const sel = document.getElementById('card-format-select');
+  sel.innerHTML = CARD_FORMATS.map(f => `<option value="${f.id}">${f.label}</option>`).join('');
+
   subscription?.unsubscribe();
   subscription = liveQuery(() =>
     db.stores.filter(s => !isArchived(s)).sortBy('sortOrder')
@@ -64,7 +59,7 @@ export function initStores() {
     if (!btn) return;
     e.stopPropagation();
     const id = Number(btn.dataset.id);
-    db.stores.get(id).then(store => { if (store) showBarcode(store); });
+    db.stores.get(id).then(store => { if (store) showCardOverlay(store); });
   });
 }
 
@@ -73,47 +68,14 @@ async function handleCardImageSelected(e) {
   if (!file) return;
   e.target.value = '';
 
-  const statusEl = document.getElementById('card-scan-status');
-  statusEl.textContent = 'Scanning…';
-
-  try {
-    const bitmap = await createImageBitmap(file);
-    const detector = new BarcodeDetector({
-      formats: ['ean_13','ean_8','code_128','code_39','upc_a','upc_e','qr_code','pdf417','aztec','data_matrix'],
-    });
-    const results = await detector.detect(bitmap);
-
-    if (!results.length) {
-      bitmap.close();
-      statusEl.textContent = 'No barcode found — try a clearer screenshot.';
-      return;
-    }
-
-    statusEl.textContent = '';
-    const { rawValue, format, boundingBox } = results[0];
-
-    // Crop the detected barcode region and save it for lossless display
-    try {
-      const pad = Math.round(Math.min(boundingBox.width, boundingBox.height) * 0.1);
-      const x = Math.max(0, boundingBox.x - pad);
-      const y = Math.max(0, boundingBox.y - pad);
-      const w = Math.min(bitmap.width - x, boundingBox.width + pad * 2);
-      const h = Math.min(bitmap.height - y, boundingBox.height + pad * 2);
-      const crop = document.createElement('canvas');
-      crop.width = w;
-      crop.height = h;
-      crop.getContext('2d').drawImage(bitmap, x, y, w, h, 0, 0, w, h);
-      pendingCardImage = crop.toDataURL('image/png');
-    } catch {
-      pendingCardImage = null;
-    }
-    bitmap.close();
-
-    showCardEntry(rawValue, format);
-  } catch (err) {
-    statusEl.textContent = 'Scan failed — enter the number manually below.';
+  const result = await scanCardImage(file, {
+    onStatus: text => { document.getElementById('card-scan-status').textContent = text; },
+  });
+  if (result.ok) {
+    pendingCardImage = result.image;
+    showCardEntry(result.number, result.format);
+  } else if (result.reason === 'error') {
     showCardEntry('', 'code_128');
-    console.error('BarcodeDetector error:', err);
   }
 }
 
@@ -149,7 +111,7 @@ async function renderList(stores) {
     const li = document.createElement('li');
     li.className = 'store-row';
 
-    const barcodeBtnHtml = store.cardNumber
+    const barcodeBtnHtml = hasCard(store)
       ? `<button class="barcode-btn" data-id="${store.id}" title="Show loyalty card" aria-label="Show loyalty card barcode">
            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
              <path d="M3 5v14M7 5v14M11 5v14M15 5v8M19 5v8M15 17v2M19 17v2"/>
@@ -306,73 +268,6 @@ async function deleteStore() {
 
   await softDelete('stores', id);
   closeModal();
-}
-
-function loadScript(src) {
-  if (document.querySelector(`script[src="${src}"]`)) return Promise.resolve();
-  return new Promise((resolve, reject) => {
-    const s = document.createElement('script');
-    s.src = src;
-    s.onload = resolve;
-    s.onerror = reject;
-    document.head.appendChild(s);
-  });
-}
-
-export async function showBarcode(store) {
-  const overlay = document.getElementById('barcode-overlay');
-  const svg = document.getElementById('barcode-svg');
-  const canvas = document.getElementById('barcode-canvas');
-  const img = document.getElementById('barcode-img');
-  const fallback = document.getElementById('barcode-fallback-number');
-  const nameEl = overlay.querySelector('.barcode-store-name');
-
-  nameEl.textContent = store.name;
-  svg.classList.add('hidden');
-  canvas.classList.add('hidden');
-  img.classList.add('hidden');
-  fallback.classList.add('hidden');
-  svg.innerHTML = '';
-
-  const jsFormat = FORMAT_MAP[store.cardFormat] ?? null;
-  const isQR = store.cardFormat === 'qr_code';
-
-  if (jsFormat) {
-    await loadScript('https://cdn.jsdelivr.net/npm/jsbarcode@3/dist/JsBarcode.all.min.js');
-    try {
-      svg.classList.remove('hidden');
-      window.JsBarcode(svg, store.cardNumber, {
-        format: jsFormat,
-        displayValue: true,
-        fontSize: 18,
-        margin: 12,
-      });
-    } catch {
-      svg.classList.add('hidden');
-      fallback.classList.remove('hidden');
-      fallback.textContent = store.cardNumber;
-    }
-  } else if ((isQR || DISPLAY_ONLY_FORMATS.has(store.cardFormat)) && store.cardImage) {
-    img.src = store.cardImage;
-    img.classList.remove('hidden');
-  } else if (isQR || DISPLAY_ONLY_FORMATS.has(store.cardFormat)) {
-    await loadScript('https://cdn.jsdelivr.net/npm/qrcode@1/build/qrcode.min.js');
-    try {
-      canvas.classList.remove('hidden');
-      const size = Math.min(window.innerWidth * 0.85, 400);
-      await window.QRCode.toCanvas(canvas, store.cardNumber, { width: size, margin: 2 });
-    } catch {
-      canvas.classList.add('hidden');
-      fallback.classList.remove('hidden');
-      fallback.textContent = store.cardNumber;
-    }
-  } else {
-    fallback.classList.remove('hidden');
-    fallback.textContent = store.cardNumber;
-  }
-
-  overlay.classList.remove('hidden');
-  screen.orientation?.lock('landscape').catch(() => {});
 }
 
 function closeBarcodeOverlay() {

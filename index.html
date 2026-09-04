@@ -236,14 +236,7 @@
     <div id="card-manual-entry" class="card-manual-entry hidden">
       <textarea id="card-number-input" rows="3" placeholder="Card number (or full QR content — scan, don't type for QR)" autocomplete="off" data-lpignore="true" data-1p-ignore data-bwignore="true"></textarea>
       <span class="settings-hint-inline" style="margin-top:-4px">For QR codes, always scan the screenshot — typing just the visible number won't match</span>
-      <select id="card-format-select">
-        <option value="code_128">Code 128 (most loyalty cards)</option>
-        <option value="ean_13">EAN-13</option>
-        <option value="ean_8">EAN-8</option>
-        <option value="code_39">Code 39</option>
-        <option value="upc_a">UPC-A</option>
-        <option value="qr_code">QR Code</option>
-      </select>
+      <select id="card-format-select"></select>
       <span class="card-clear-link" id="card-clear-link">Clear card</span>
     </div>
     <input type="hidden" id="store-card-number">
