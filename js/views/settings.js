@@ -112,8 +112,9 @@ async function saveSyncConfig() {
   const pat  = document.getElementById('gh-pat').value.trim();
   await setSyncMeta('ghRepo', repo);
   await setSyncMeta('ghPat', pat);
-  document.getElementById('sync-test-result').textContent = 'Saved.';
-  setTimeout(() => { document.getElementById('sync-test-result').textContent = ''; }, 2000);
+  const resultEl = document.getElementById('sync-test-result');
+  resultEl.textContent = 'Saved.';
+  setTimeout(() => { if (resultEl.textContent === 'Saved.') resultEl.textContent = ''; }, 2000);
 }
 
 async function testSync() {

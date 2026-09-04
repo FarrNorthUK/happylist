@@ -3,7 +3,7 @@ import { initList }               from './views/list.js';
 import { initStores }             from './views/stores.js';
 import { initShop, resetShopToGrid } from './views/shop.js';
 import { initSettings, updateSyncStatus } from './views/settings.js';
-import { flushSync, markPendingSync }     from './sync.js';
+import { flushSync }                      from './sync.js';
 
 // ── Service Worker registration ──
 if ('serviceWorker' in navigator) {
@@ -63,10 +63,43 @@ window.addEventListener('online',  updateOnlineState);
 window.addEventListener('offline', updateOnlineState);
 updateOnlineState();
 
+// ── Sync badge ──
+let _syncBadgeStart = 0;
+let _syncBadgeTimer = null;
+
+function setSyncBadge(state) {
+  const dot = document.getElementById('nav-sync-dot');
+  if (!dot) return;
+
+  if (state === 'syncing') {
+    clearTimeout(_syncBadgeTimer);
+    _syncBadgeStart = Date.now();
+    dot.classList.remove('hidden');
+    dot.style.background = '#f59e0b';
+  } else {
+    const delay = Math.max(0, 600 - (Date.now() - _syncBadgeStart));
+    clearTimeout(_syncBadgeTimer);
+    _syncBadgeTimer = setTimeout(() => {
+      if (state === 'ok') {
+        dot.classList.add('hidden');
+      } else {
+        dot.classList.remove('hidden');
+        dot.style.background = '#dc2626';
+      }
+    }, delay);
+  }
+}
+
+window.addEventListener('happylist:sync-state', e => setSyncBadge(e.detail.state));
+
 // happylist:mutated is fired after every local write
 window.addEventListener('happylist:mutated', () => {
   pendingChanges = true;
-  markPendingSync();
+  const dot = document.getElementById('nav-sync-dot');
+  if (dot) {
+    dot.classList.remove('hidden');
+    dot.style.background = '#f59e0b';
+  }
   if (navigator.onLine) scheduleSync();
 
   // Re-register Background Sync so Android Chrome can flush if app is closed
