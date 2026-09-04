@@ -3,9 +3,11 @@ import { liveQuery } from 'dexie';
 import { showConfirm } from '../confirm.js';
 import { hasCard, showCardOverlay } from '../card.js';
 import {
-  isArchived, isBought, isRemoved, isActive, storeCounts,
+  isArchived, isRemoved, isActive, storeCounts,
   addRow, mutateRow, softDelete, buyItem, reactivateItem,
 } from '../data.js';
+import { computeRunView, computeShopGrid } from './shop-model.js';
+import { esc } from '../dom.js';
 
 let currentRunId = null;
 let currentStoreId = null;
@@ -24,35 +26,31 @@ export function resetShopToGrid() {
   if (!currentRunId) showGrid();
 }
 
-function storeBg(store) {
-  return store.colour2
-    ? `linear-gradient(135deg, ${store.colour} 50%, ${store.colour2} 50%)`
-    : store.colour;
-}
-
 async function renderStoreGrid() {
   const stores = await db.stores.filter(s => !isArchived(s)).sortBy('sortOrder');
-  const grid = document.getElementById('shop-store-grid');
+  // Count only active (not bought, not removed) items per store
+  const items = await db.items.filter(isActive).toArray();
+  const vm = computeShopGrid({ stores, counts: storeCounts(items) });
+  renderGrid(vm, Object.fromEntries(stores.map(s => [s.id, s])));
+}
 
-  if (!stores.length) {
+function renderGrid(vm, storeById) {
+  const grid = document.getElementById('shop-store-grid');
+  if (vm.empty) {
     grid.innerHTML = '<p class="empty-state">Add stores in the Stores tab first.</p>';
     return;
   }
 
-  // Count only active (not bought, not removed) items per store
-  const items = await db.items.filter(isActive).toArray();
-  const counts = storeCounts(items);
-
   grid.innerHTML = '';
-  stores.forEach(store => {
-    const card = document.createElement('div');
-    card.className = 'store-card';
-    card.style.background = storeBg(store);
-    card.innerHTML = `
-      <span>${esc(store.name)}</span>
-      <span class="store-card-count">${counts[store.id] ?? 0} items</span>`;
-    card.onclick = () => startRun(store);
-    grid.appendChild(card);
+  vm.cards.forEach(card => {
+    const el = document.createElement('div');
+    el.className = 'store-card';
+    el.style.background = card.bg;
+    el.innerHTML = `
+      <span>${esc(card.name)}</span>
+      <span class="store-card-count">${card.count} items</span>`;
+    el.onclick = () => startRun(storeById[card.id]);
+    grid.appendChild(el);
   });
 }
 
@@ -104,25 +102,12 @@ function subscribeToRun() {
   }).subscribe({ next: renderRunView, error: console.error });
 }
 
-function renderRunView({ allStoreItems, checkedNow }) {
-  const checkedSet = new Set(checkedNow.map(ci => ci.itemId));
-
-  const wanted = allStoreItems
-    .filter(i => isActive(i) && !checkedSet.has(i.id))
-    .sort((a, b) => a.name.localeCompare(b.name));
-
-  const ticked = allStoreItems
-    .filter(i => checkedSet.has(i.id) && !isRemoved(i))
-    .sort((a, b) => a.name.localeCompare(b.name));
-
-  const inactive = allStoreItems
-    .filter(i => (isBought(i) && !isRemoved(i) && !checkedSet.has(i.id)) || isRemoved(i))
-    .sort((a, b) => a.name.localeCompare(b.name));
-
+function renderRunView(data) {
+  const vm = computeRunView(data);
   const ul = document.getElementById('shop-checklist');
   ul.textContent = '';
 
-  if (!wanted.length && !ticked.length && !inactive.length) {
+  if (vm.empty) {
     const li = document.createElement('li');
     li.className = 'empty-state';
     li.textContent = 'No items for this store.';
@@ -130,16 +115,16 @@ function renderRunView({ allStoreItems, checkedNow }) {
     return;
   }
 
-  wanted.forEach(item => ul.appendChild(makeRunRow(item, 'wanted')));
+  vm.wanted.forEach(item => ul.appendChild(makeRunRow(item, 'wanted')));
 
-  if (ticked.length) {
+  if (vm.ticked.length) {
     ul.appendChild(makeDivider('— ticked off this run —', false));
-    ticked.forEach(item => ul.appendChild(makeRunRow(item, 'ticked')));
+    vm.ticked.forEach(item => ul.appendChild(makeRunRow(item, 'ticked')));
   }
 
-  if (inactive.length) {
+  if (vm.inactive.length) {
     ul.appendChild(makeDivider('— off the list — tap to re-add —', true));
-    inactive.forEach(item => ul.appendChild(makeRunRow(item, 'inactive')));
+    vm.inactive.forEach(item => ul.appendChild(makeRunRow(item, 'inactive')));
   }
 }
 
@@ -246,9 +231,4 @@ async function finishTrip() {
 
   await mutateRow('shoppingRuns', currentRunId, { completedAt: t });
   showGrid();
-}
-
-function esc(str) {
-  return String(str).replace(/[&<>"']/g, c =>
-    ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]));
 }

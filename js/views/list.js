@@ -2,9 +2,11 @@ import db from '../db.js';
 import { liveQuery } from 'dexie';
 import { showConfirm } from '../confirm.js';
 import {
-  isArchived, isRemoved, isActive, isInactive,
+  isArchived, isRemoved, isInactive,
   upsertItem, removeFromList, reactivateItem, softDelete,
 } from '../data.js';
+import { computeListView } from './list-model.js';
+import { esc, storeBg } from '../dom.js';
 
 let subscription = null;
 let activeStoreFilter = null;
@@ -20,7 +22,10 @@ export function initList() {
       db.stores.filter(s => !isArchived(s)).sortBy('sortOrder'),
     ]);
     return { items, stores };
-  }).subscribe({ next: render, error: console.error });
+  }).subscribe({
+    next: data => { _lastData = data; renderNow(); },
+    error: console.error,
+  });
 
   document.getElementById('btn-add-item').onclick = () => openItemModal(null);
   document.getElementById('btn-save-item').onclick = saveItem;
@@ -35,69 +40,56 @@ export function initList() {
   const searchEl = document.getElementById('list-search');
   searchEl.addEventListener('input', e => {
     searchQuery = e.target.value.trim().toLowerCase();
-    reRenderItems();
+    renderNow();
   });
 }
 
 let _lastData = null;
 
-function render(data) {
-  _lastData = data;
-  renderFilters(data.stores);
-  reRenderItems();
+function renderNow() {
+  if (!_lastData) return;
+  const vm = computeListView({
+    items: _lastData.items,
+    stores: _lastData.stores,
+    activeStoreFilter,
+    searchQuery,
+  });
+  renderFilters(vm.filters);
+  renderItems(vm);
 }
 
-function renderFilters(stores) {
+function renderFilters(filters) {
   const container = document.getElementById('list-store-filters');
-  const existing = container.querySelectorAll('.chip');
-  const labels = ['All', ...stores.map(s => s.name)];
-  const existingLabels = [...existing].map(e => e.textContent);
-  if (JSON.stringify(labels) === JSON.stringify(existingLabels)) return;
+  const existing = [...container.querySelectorAll('.chip')];
+  const sameShape = existing.length === filters.length
+    && existing.every((el, i) =>
+      el.textContent === filters[i].label
+      && el.classList.contains('active') === filters[i].active);
+  if (sameShape) return;
 
   container.innerHTML = '';
-  container.appendChild(makeChip('All', null));
-  stores.forEach(store => container.appendChild(makeChip(store.name, store.id, store.colour)));
+  filters.forEach(f => container.appendChild(makeChip(f)));
 }
 
-function makeChip(label, storeId, colour) {
+function makeChip(f) {
   const btn = document.createElement('button');
-  btn.className = 'chip' + (activeStoreFilter === storeId ? ' active' : '');
-  btn.textContent = label;
-  if (colour && activeStoreFilter === storeId) btn.style.background = colour;
+  btn.className = 'chip' + (f.active ? ' active' : '');
+  btn.textContent = f.label;
+  if (f.colour && f.active) btn.style.background = f.colour;
   btn.onclick = () => {
-    activeStoreFilter = storeId;
-    document.querySelectorAll('#list-store-filters .chip').forEach(c => {
-      c.classList.remove('active');
-      c.style.background = '';
-    });
-    btn.classList.add('active');
-    if (colour) btn.style.background = colour;
-    reRenderItems();
+    activeStoreFilter = f.storeId;
+    renderNow();
   };
   return btn;
 }
 
-function reRenderItems() {
-  if (!_lastData) return;
-  const { items, stores } = _lastData;
-  const storeMap = Object.fromEntries(stores.map(s => [s.id, s]));
-
-  const matchesFilter = item => {
-    if (activeStoreFilter !== null && !(item.storeIds || []).includes(activeStoreFilter)) return false;
-    if (searchQuery && !item.name.toLowerCase().includes(searchQuery)) return false;
-    return true;
-  };
-
-  const active = items.filter(i => isActive(i) && matchesFilter(i));
-  const inactive = items.filter(i => isInactive(i) && matchesFilter(i));
-  active.sort((a, b) => a.name.localeCompare(b.name));
-  inactive.sort((a, b) => a.name.localeCompare(b.name));
-
+function renderItems({ active, inactive, empty }) {
+  const storeMap = Object.fromEntries(_lastData.stores.map(s => [s.id, s]));
   const ul = document.getElementById('item-list');
   ul.innerHTML = '';
 
-  if (!active.length && !inactive.length) {
-    ul.innerHTML = `<li class="empty-state">${items.length ? 'No items match the filter.' : 'No items yet.\nTap + to add one.'}</li>`;
+  if (empty) {
+    ul.innerHTML = `<li class="empty-state">${empty === 'no-match' ? 'No items match the filter.' : 'No items yet.\nTap + to add one.'}</li>`;
     return;
   }
 
@@ -110,12 +102,6 @@ function reRenderItems() {
     ul.appendChild(divider);
     inactive.forEach(item => ul.appendChild(makeItemRow(item, storeMap)));
   }
-}
-
-function storeBg(store) {
-  return store.colour2
-    ? `linear-gradient(135deg, ${store.colour} 50%, ${store.colour2} 50%)`
-    : store.colour;
 }
 
 function storeInitials(name) {
@@ -259,9 +245,4 @@ async function archiveItem() {
   if (!await showConfirm('Delete this item?', { confirmText: 'Delete', danger: true })) return;
   await softDelete('items', id);
   closeItemModal();
-}
-
-function esc(str) {
-  return String(str).replace(/[&<>"']/g, c =>
-    ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]));
 }

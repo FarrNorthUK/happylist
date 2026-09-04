@@ -4,7 +4,9 @@ import {
   isArchived, isAssociated, storeCounts,
   addRow, mutateRow, softDelete,
 } from '../data.js';
-import { CARD_FORMATS, hasCard, showCardOverlay, scanCardImage } from '../card.js';
+import { CARD_FORMATS, showCardOverlay, scanCardImage } from '../card.js';
+import { computeStoreList } from './stores-model.js';
+import { esc } from '../dom.js';
 
 const COLOURS = [
   '#e31837','#d81b60','#e65100','#e87722','#f57f17','#78be20','#2e7d32',
@@ -100,19 +102,24 @@ function clearCard() {
 }
 
 async function renderList(stores) {
+  const vm = computeStoreList({ stores, itemCounts: await getItemCounts() });
+  renderStoreRows(vm, stores);
+}
+
+function renderStoreRows(vm, stores) {
   const ul = document.getElementById('store-list');
-  if (!stores.length) {
+  if (vm.empty) {
     ul.innerHTML = '<li class="empty-state">No stores yet. Tap + to add one.</li>';
     return;
   }
-  const itemCounts = await getItemCounts();
   ul.innerHTML = '';
-  stores.forEach((store, idx) => {
+  vm.rows.forEach((row, idx) => {
+    const store = stores[idx];
     const li = document.createElement('li');
     li.className = 'store-row';
 
-    const barcodeBtnHtml = hasCard(store)
-      ? `<button class="barcode-btn" data-id="${store.id}" title="Show loyalty card" aria-label="Show loyalty card barcode">
+    const barcodeBtnHtml = row.hasCard
+      ? `<button class="barcode-btn" data-id="${row.id}" title="Show loyalty card" aria-label="Show loyalty card barcode">
            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
              <path d="M3 5v14M7 5v14M11 5v14M15 5v8M19 5v8M15 17v2M19 17v2"/>
            </svg>
@@ -120,13 +127,13 @@ async function renderList(stores) {
       : '';
 
     li.innerHTML = `
-      <span class="store-swatch" style="background:${storeBg(store)}"></span>
-      <span class="store-row-name">${esc(store.name)}</span>
-      <span class="store-row-count">${itemCounts[store.id] ?? 0} items</span>
+      <span class="store-swatch" style="background:${row.bg}"></span>
+      <span class="store-row-name">${esc(row.name)}</span>
+      <span class="store-row-count">${row.count} items</span>
       ${barcodeBtnHtml}
       <div class="reorder-btns">
-        <button class="reorder-btn" data-dir="up" data-idx="${idx}" ${idx === 0 ? 'disabled' : ''}>▲</button>
-        <button class="reorder-btn" data-dir="down" data-idx="${idx}" ${idx === stores.length - 1 ? 'disabled' : ''}>▼</button>
+        <button class="reorder-btn" data-dir="up" data-idx="${idx}" ${row.canUp ? '' : 'disabled'}>▲</button>
+        <button class="reorder-btn" data-dir="down" data-idx="${idx}" ${row.canDown ? '' : 'disabled'}>▼</button>
       </div>`;
     li.querySelector('.store-row-name').onclick = () => openModal(store);
     li.querySelector('[data-dir=up]').onclick = (e) => { e.stopPropagation(); reorder(stores, idx, -1); };
@@ -223,12 +230,6 @@ function renderColourPicker2(selected) {
   });
 }
 
-function storeBg(store) {
-  return store.colour2
-    ? `linear-gradient(135deg, ${store.colour} 50%, ${store.colour2} 50%)`
-    : store.colour;
-}
-
 function closeModal() {
   document.getElementById('modal-store').classList.add('hidden');
 }
@@ -273,9 +274,4 @@ async function deleteStore() {
 function closeBarcodeOverlay() {
   document.getElementById('barcode-overlay').classList.add('hidden');
   screen.orientation?.unlock?.();
-}
-
-function esc(str) {
-  return String(str).replace(/[&<>"']/g, c =>
-    ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]));
 }
