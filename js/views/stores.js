@@ -2,10 +2,11 @@ import db from '../db.js';
 import { liveQuery } from 'dexie';
 import {
   isArchived, isAssociated, storeCounts,
-  addRow, mutateRow, softDelete,
+  addRow, mutateRow, deleteStore,
 } from '../data.js';
+import { showConfirm } from '../confirm.js';
 import { CARD_FORMATS, showCardOverlay, scanCardImage } from '../card.js';
-import { computeStoreList } from './stores-model.js';
+import { computeStoreList, computeDeleteStoreMessage } from './stores-model.js';
 import { esc } from '../dom.js';
 
 const COLOURS = [
@@ -27,7 +28,7 @@ export function initStores() {
 
   document.getElementById('btn-add-store').onclick = () => openModal(null);
   document.getElementById('btn-save-store').onclick = saveStore;
-  document.getElementById('btn-delete-store').onclick = deleteStore;
+  document.getElementById('btn-delete-store').onclick = confirmDeleteStore;
   document.getElementById('btn-cancel-store').onclick = closeModal;
   document.querySelector('#modal-store .modal-backdrop').onclick = closeModal;
 
@@ -162,7 +163,8 @@ function openModal(store) {
   document.getElementById('store-name').value = store?.name ?? '';
   document.getElementById('store-colour').value = store?.colour ?? COLOURS[0];
   document.getElementById('store-colour2').value = store?.colour2 ?? '';
-  document.getElementById('btn-delete-store').classList.toggle('hidden', !store);
+  document.getElementById('btn-delete-store').classList.toggle('hidden', !store || store.general === true);
+  document.getElementById('store-name').disabled = store?.general === true;
   renderColourPicker(store?.colour ?? COLOURS[0]);
   renderColourPicker2(store?.colour2 ?? '');
 
@@ -238,6 +240,11 @@ async function saveStore() {
   const name = document.getElementById('store-name').value.trim();
   if (!name) { document.getElementById('store-name').focus(); return; }
   const id = document.getElementById('store-id').value;
+  const editing = id ? await db.stores.get(Number(id)) : null;
+  if (name.toLowerCase() === 'general' && !editing?.general) {
+    document.getElementById('store-name').focus();
+    return;
+  }
   const colour = document.getElementById('store-colour').value;
   const colour2 = document.getElementById('store-colour2').value || null;
   const cardNumber = document.getElementById('store-card-number').value || null;
@@ -255,19 +262,16 @@ async function saveStore() {
   closeModal();
 }
 
-async function deleteStore() {
+async function confirmDeleteStore() {
   const id = Number(document.getElementById('store-id').value);
   if (!id) return;
   const store = await db.stores.get(id);
   if (!store) return;
 
-  // Remove this store from all items that reference it
-  const affected = await db.items.filter(i => !isArchived(i) && (i.storeIds || []).includes(id)).toArray();
-  await Promise.all(affected.map(item =>
-    mutateRow('items', item.id, { storeIds: item.storeIds.filter(s => s !== id) })
-  ));
+  const linked = await db.items.filter(i => !isArchived(i) && (i.storeIds || []).includes(id)).toArray();
+  if (!await showConfirm(computeDeleteStoreMessage({ storeName: store.name, linkedItems: linked }), { confirmText: 'Delete', danger: true })) return;
 
-  await softDelete('stores', id);
+  await deleteStore(id);
   closeModal();
 }
 

@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { computeStoreList } from '../js/views/stores-model.js';
+import { computeStoreList, computeDeleteStoreMessage } from '../js/views/stores-model.js';
 
 test('computeStoreList: empty when no stores', () => {
   const vm = computeStoreList({ stores: [], itemCounts: {} });
@@ -30,4 +30,39 @@ test('computeStoreList: single store cannot reorder', () => {
 test('computeStoreList: missing count defaults to 0', () => {
   const vm = computeStoreList({ stores: [{ id: 1, name: 'A', colour: '#000' }], itemCounts: {} });
   assert.equal(vm.rows[0].count, 0);
+});
+
+test('computeDeleteStoreMessage: no linked items', () => {
+  assert.equal(
+    computeDeleteStoreMessage({ storeName: 'Tesco', linkedItems: [] }),
+    'Delete "Tesco"?',
+  );
+});
+
+test('computeDeleteStoreMessage: linked items, some only-linked', () => {
+  const message = computeDeleteStoreMessage({
+    storeName: 'Tesco',
+    linkedItems: [
+      { storeIds: [1] },
+      { storeIds: [1] },
+      { storeIds: [1, 2] },
+    ],
+  });
+  assert.equal(message, 'Delete "Tesco"? 3 items are linked to it. 2 will be moved to General.');
+});
+
+test('computeDeleteStoreMessage: linked items, none only-linked', () => {
+  const message = computeDeleteStoreMessage({
+    storeName: 'Tesco',
+    linkedItems: [{ storeIds: [1, 2] }, { storeIds: [1, 3] }],
+  });
+  assert.equal(message, 'Delete "Tesco"? 2 items are linked to it.');
+});
+
+test('computeDeleteStoreMessage: singular forms', () => {
+  const message = computeDeleteStoreMessage({
+    storeName: 'Tesco',
+    linkedItems: [{ storeIds: [1] }],
+  });
+  assert.equal(message, 'Delete "Tesco"? 1 item is linked to it. 1 will be moved to General.');
 });

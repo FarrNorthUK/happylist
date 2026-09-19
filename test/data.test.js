@@ -162,3 +162,178 @@ test('putRowAsIs: writes a row without stamping or firing', async () => {
   assert.equal((await db.items.get(200)).updatedAt, '2024-06-01T00:00:00.000Z');
   assert.deepEqual(fired, []);
 });
+
+async function seedStore(overrides = {}) {
+  return data.addRow('stores', {
+    name: 'Store',
+    colour: '#fff',
+    colour2: null,
+    sortOrder: 0,
+    cardNumber: null,
+    cardFormat: null,
+    cardImage: null,
+    ...overrides,
+  });
+}
+
+test('ensureGeneralStore: creates a flagged General store when none exists', async () => {
+  const id = await data.ensureGeneralStore();
+
+  const store = await db.stores.get(id);
+  assert.equal(store.name, 'General');
+  assert.equal(store.general, true);
+  assert.equal(store.deletedAt, null);
+  assert.equal(store.sortOrder, 0);
+  assert.ok(store.colour);
+  assert.deepEqual(fired, ['happylist:mutated']);
+});
+
+test('ensureGeneralStore: repurposes an existing store named General, case-insensitively, canonicalising the name', async () => {
+  const id = await seedStore({ name: '  gEnErAl ' });
+
+  const generalId = await data.ensureGeneralStore();
+
+  assert.equal(generalId, id);
+  const store = await db.stores.get(id);
+  assert.equal(store.name, 'General');
+  assert.equal(store.general, true);
+  assert.equal((await db.stores.count()), 1);
+});
+
+test('ensureGeneralStore: repurposes the first General-named store by sortOrder when several exist', async () => {
+  const later = await seedStore({ name: 'General', sortOrder: 5 });
+  const first = await seedStore({ name: 'GENERAL', sortOrder: 1 });
+
+  const generalId = await data.ensureGeneralStore();
+
+  assert.equal(generalId, first);
+  assert.equal((await db.stores.get(first)).general, true);
+  assert.notEqual((await db.stores.get(later)).general, true);
+});
+
+test('ensureGeneralStore: ignores an archived store named General and creates a new one', async () => {
+  await seedStore({ name: 'General', deletedAt: OLD_TS });
+
+  const generalId = await data.ensureGeneralStore();
+
+  const store = await db.stores.get(generalId);
+  assert.equal(store.deletedAt, null);
+  assert.equal(store.general, true);
+  assert.equal((await db.stores.count()), 2);
+});
+
+test('ensureGeneralStore: is a no-op on the second call', async () => {
+  const id = await data.ensureGeneralStore();
+  fired.length = 0;
+
+  await data.ensureGeneralStore();
+
+  assert.equal((await db.stores.count()), 1);
+  assert.deepEqual(fired, []);
+});
+
+test('ensureGeneralStore: links orphaned non-archived items to General, leaves archived and linked items alone', async () => {
+  const active = await seedItem({ name: 'A' });
+  const bought = await seedItem({ name: 'B', boughtAt: OLD_TS });
+  const removed = await seedItem({ name: 'C', removedAt: OLD_TS });
+  const archived = await seedItem({ name: 'D', deletedAt: OLD_TS });
+  const linked = await seedItem({ name: 'E', storeIds: [7] });
+
+  const generalId = await data.ensureGeneralStore();
+
+  assert.deepEqual((await db.items.get(active)).storeIds, [generalId]);
+  assert.deepEqual((await db.items.get(bought)).storeIds, [generalId]);
+  assert.deepEqual((await db.items.get(removed)).storeIds, [generalId]);
+  assert.deepEqual((await db.items.get(archived)).storeIds, []);
+  assert.deepEqual((await db.items.get(linked)).storeIds, [7]);
+});
+
+test('deleteStore: soft-deletes the store, reassigns only-linked items to General, strips multi-store links', async () => {
+  const generalId = await data.ensureGeneralStore();
+  const storeId = await seedStore({ name: 'Tesco', sortOrder: 1 });
+  const onlyLinked = await seedItem({ name: 'A', storeIds: [storeId] });
+  const removedOnlyLinked = await seedItem({ name: 'B', storeIds: [storeId], removedAt: OLD_TS });
+  const multiLinked = await seedItem({ name: 'C', storeIds: [storeId, 99] });
+  const archivedLinked = await seedItem({ name: 'D', storeIds: [storeId], deletedAt: OLD_TS });
+  const other = await seedItem({ name: 'E', storeIds: [99] });
+
+  assert.equal(await data.deleteStore(storeId), true);
+
+  assert.ok((await db.stores.get(storeId)).deletedAt);
+  assert.deepEqual((await db.items.get(onlyLinked)).storeIds, [generalId]);
+  assert.deepEqual((await db.items.get(removedOnlyLinked)).storeIds, [generalId]);
+  assert.deepEqual((await db.items.get(multiLinked)).storeIds, [99]);
+  assert.deepEqual((await db.items.get(archivedLinked)).storeIds, [storeId]);
+  assert.deepEqual((await db.items.get(other)).storeIds, [99]);
+});
+
+test('deleteStore: deletes a store with no linked items', async () => {
+  await data.ensureGeneralStore();
+  const storeId = await seedStore({ name: 'Empty', sortOrder: 1 });
+
+  assert.equal(await data.deleteStore(storeId), true);
+
+  assert.ok((await db.stores.get(storeId)).deletedAt);
+});
+
+test('deleteStore: refuses to delete the General store', async () => {
+  const generalId = await data.ensureGeneralStore();
+  const item = await seedItem({ name: 'A', storeIds: [generalId] });
+
+  assert.equal(await data.deleteStore(generalId), false);
+
+  assert.equal((await db.stores.get(generalId)).deletedAt, null);
+  assert.deepEqual((await db.items.get(item)).storeIds, [generalId]);
+});
+
+test('deleteStore: refuses a missing store', async () => {
+  assert.equal(await data.deleteStore(12345), false);
+});
+
+test('upsertItem: assigns General when saved with no stores', async () => {
+  const generalId = await data.ensureGeneralStore();
+
+  await data.upsertItem(null, { name: 'Milk', quantity: null, unit: null, notes: null, storeIds: [] });
+
+  assert.deepEqual((await db.items.orderBy('id').first()).storeIds, [generalId]);
+});
+
+test('upsertItem: creates General on demand when missing', async () => {
+  await data.upsertItem(null, { name: 'Milk', quantity: null, unit: null, notes: null, storeIds: [] });
+
+  const general = await data.getGeneralStore();
+  assert.ok(general);
+  assert.deepEqual((await db.items.orderBy('id').first()).storeIds, [general.id]);
+});
+
+test('upsertItem: keeps explicit store links', async () => {
+  await data.ensureGeneralStore();
+
+  await data.upsertItem(null, { name: 'Milk', quantity: null, unit: null, notes: null, storeIds: [7] });
+
+  assert.deepEqual((await db.items.orderBy('id').first()).storeIds, [7]);
+});
+
+test('upsertItem: update with no selected stores falls back to General', async () => {
+  const generalId = await data.ensureGeneralStore();
+  const id = await seedItem({ name: 'Eggs', storeIds: [7] });
+
+  await data.upsertItem(id, { name: 'Eggs', quantity: null, unit: null, notes: null, storeIds: [] });
+
+  assert.deepEqual((await db.items.get(id)).storeIds, [generalId]);
+});
+
+test('upsertItem: update without storeIds in the patch leaves existing links untouched', async () => {
+  const id = await seedItem({ name: 'Eggs', storeIds: [7] });
+
+  await data.upsertItem(id, { name: 'Eggs', quantity: 6, unit: null, notes: null });
+
+  assert.deepEqual((await db.items.get(id)).storeIds, [7]);
+});
+
+test('ensureGeneralStore: concurrent calls coalesce into a single store', async () => {
+  const [a, b] = await Promise.all([data.ensureGeneralStore(), data.ensureGeneralStore()]);
+
+  assert.equal(a, b);
+  assert.equal((await db.stores.count()), 1);
+});

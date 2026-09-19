@@ -5,6 +5,7 @@ import { initShop, resetShopToGrid } from './views/shop.js';
 import { initSettings, updateSyncStatus } from './views/settings.js';
 import { flushSync }                      from './sync.js';
 import { createUpdateChecker, fetchVersionFromNetwork } from './update.js';
+import { ensureGeneralStore }             from './data.js';
 
 // ── Service Worker registration ──
 if ('serviceWorker' in navigator) {
@@ -28,6 +29,9 @@ if ('serviceWorker' in navigator) {
     if (!persisted) navigator.storage.persist();
   }
 })();
+
+// ── Launch migration: ensure the General store exists ──
+ensureGeneralStore().catch(console.error);
 
 // ── Init views ──
 initRouter();
