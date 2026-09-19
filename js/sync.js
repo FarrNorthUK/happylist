@@ -1,5 +1,5 @@
 import db, { getSyncMeta, setSyncMeta, now } from './db.js';
-import { importTable, putRowAsIs } from './data.js';
+import { importTableAsLatest, archiveRowsAsLatest, putRowAsIs } from './data.js';
 
 const TABLES = ['stores', 'items', 'shoppingRuns', 'checkedItems'];
 const FILE = 'happylist-data.json';
@@ -196,24 +196,45 @@ export function createSync({ makeTransport }) {
 
     return withLock('restore', async () => {
       fireState('syncing');
+      let localChanged = false;
       try {
+        const transport = makeTransport(repo, pat);
+
+        const live = await transport.getFile(FILE);
+        if (live.status !== 200 && live.status !== 404) {
+          return { ok: false, message: errorMessage(live.status, live.rateLimited) };
+        }
+
+        // Live rows missing from the backup are archived (stamped) so the
+        // restore is a full replacement on every device, not just a merge.
+        const liveRows = live.data ?? {};
+        const toArchive = {};
+        for (const table of TABLES) {
+          const ids = new Set((data[table] ?? []).map(r => r.id));
+          toArchive[table] = (liveRows[table] ?? []).filter(r => !ids.has(r.id));
+        }
+
         await db.transaction('rw', db.stores, db.items, db.shoppingRuns, db.checkedItems, async () => {
           for (const table of TABLES) {
-            await importTable(table, data[table] ?? []);
+            await importTableAsLatest(table, data[table] ?? []);
+            await archiveRowsAsLatest(table, toArchive[table]);
           }
         });
-        const result = await doSync(makeTransport(repo, pat), true);
+        localChanged = true;
+
+        const result = await doSync(transport, true);
         if (result.ok) {
           await setSyncMeta('lastSyncedAt', now());
           fireState('ok');
         } else {
           fireState('error');
+          return { ...result, localChanged: true };
         }
         return result;
       } catch (e) {
         console.error('[sync]', e);
         fireState('error');
-        return { ok: false, message: e.message };
+        return { ok: false, message: e.message, localChanged };
       }
     });
   }

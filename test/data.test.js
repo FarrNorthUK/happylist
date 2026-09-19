@@ -141,16 +141,18 @@ test('mutateRow / addRow / softDelete: stamp and fire', async () => {
   assert.deepEqual(fired, ['happylist:mutated', 'happylist:mutated', 'happylist:mutated']);
 });
 
-test('importTable: replaces rows as-is, no stamp, no fire', async () => {
+test('importTableAsLatest: replaces rows stamped as latest, no fire', async () => {
+  const before = new Date().toISOString();
   await seedItem({ name: 'Old' });
-  await data.importTable('items', [
-    { id: 100, name: 'Imported', storeIds: [], boughtAt: null, removedAt: null, deletedAt: null, updatedAt: '2024-06-01T00:00:00.000Z' },
+  await data.importTableAsLatest('items', [
+    { id: 100, name: 'Restored', storeIds: [], boughtAt: null, removedAt: null, deletedAt: null, updatedAt: '2024-06-01T00:00:00.000Z' },
   ]);
 
   const rows = await db.items.toArray();
   assert.equal(rows.length, 1);
   assert.equal(rows[0].id, 100);
-  assert.equal(rows[0].updatedAt, '2024-06-01T00:00:00.000Z');
+  assert.equal(rows[0].name, 'Restored');
+  assert.ok(rows[0].updatedAt >= before);
   assert.deepEqual(fired, []);
 });
 

@@ -47,8 +47,8 @@ export function initSettings() {
     );
     if (!confirmed) return;
     await downloadCurrentData();
-    const { ok, message } = await restoreFromData(data);
-    if (!ok) errEl.textContent = `Restore failed: ${message}`;
+    const result = await restoreFromData(data);
+    if (!result.ok) errEl.textContent = restoreErrorMessage(result, `Restore failed: ${result.message}`);
   };
   document.getElementById('btn-close-backups').onclick = closeBackupModal;
   document.querySelector('#modal-backups .modal-backdrop').onclick = closeBackupModal;
@@ -233,17 +233,23 @@ async function openBackupModal() {
       btn.textContent = 'Restoring…';
       btn.disabled = true;
       await downloadCurrentData();
-      const { ok, message } = await restoreBackup(btn.dataset.file);
-      if (ok) {
+      const result = await restoreBackup(btn.dataset.file);
+      if (result.ok) {
         btn.textContent = '✓ Restored';
         setTimeout(closeBackupModal, 800);
       } else {
         btn.textContent = 'Restore';
         btn.disabled = false;
-        document.getElementById('backup-error').textContent = `Failed: ${message}`;
+        document.getElementById('backup-error').textContent = restoreErrorMessage(result, `Failed: ${result.message}`);
       }
     };
   });
+}
+
+function restoreErrorMessage(result, fallback) {
+  return result.localChanged
+    ? `Restored locally — push to GitHub failed (${result.message}). It will complete on the next successful sync.`
+    : fallback;
 }
 
 function closeBackupModal() {

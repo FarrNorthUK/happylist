@@ -170,13 +170,22 @@ export async function reactivateItem(id) {
   await mutateRow('items', id, patch);
 }
 
-// ── Import mode (sync / restore: as-is, no stamp, no fire) ──
-
-export async function importTable(table, rows) {
-  await db[table].clear();
-  if (rows?.length) await db[table].bulkPut(rows);
-}
+// ── Import mode (sync merge: as-is, no stamp, no fire) ──
 
 export async function putRowAsIs(table, row) {
   await db[table].put(row);
+}
+
+// ── Authoritative import (restore: stamped, no fire) ──
+
+export async function importTableAsLatest(table, rows) {
+  const ts = now();
+  await db[table].clear();
+  if (rows?.length) await db[table].bulkPut(rows.map(r => ({ ...r, updatedAt: ts })));
+}
+
+export async function archiveRowsAsLatest(table, rows) {
+  if (!rows?.length) return;
+  const ts = now();
+  await db[table].bulkPut(rows.map(r => ({ ...r, deletedAt: ts, updatedAt: ts })));
 }

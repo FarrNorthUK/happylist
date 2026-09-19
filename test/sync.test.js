@@ -352,8 +352,128 @@ test('restore waits for in-flight sync; final state is the restored data', async
   const puts = filePuts(fake);
   assert.equal(puts.length, 2);
   assert.deepEqual(puts[0].data.items.map(i => i.name), ['Before']);
-  assert.deepEqual(fake.files.get(FILE).data.items.map(i => i.name), ['After']);
-  assert.deepEqual((await db.items.toArray()).map(i => i.name), ['After']);
+
+  // The restored row is active; the pre-restore row that was live but not
+  // in the backup is archived, not resurrected.
+  const finalItems = fake.files.get(FILE).data.items;
+  assert.deepEqual(finalItems.map(i => i.name).sort(), ['After', 'Before']);
+  assert.equal(finalItems.find(i => i.name === 'After').deletedAt, null);
+  assert.ok(finalItems.find(i => i.name === 'Before').deletedAt);
+  const localItems = await db.items.toArray();
+  assert.equal(localItems.find(i => i.name === 'After').deletedAt, null);
+  assert.ok(localItems.find(i => i.name === 'Before').deletedAt);
+});
+
+test('restore: live rows not in the backup are archived locally and in the pushed payload', async () => {
+  await setCreds();
+  const fake = makeFake();
+  fake.files.set(FILE, remoteFile([
+    { id: 1, name: 'InBackup', storeIds: [], boughtAt: null, removedAt: null, deletedAt: null, updatedAt: '2026-01-01T00:00:00.000Z' },
+    { id: 2, name: 'Extra', storeIds: [], boughtAt: null, removedAt: null, deletedAt: null, updatedAt: '2026-02-01T00:00:00.000Z' },
+  ]));
+  fake.files.set(`${BACKUPS}/2026-01-01.json`, {
+    sha: 'bk',
+    data: {
+      version: 1,
+      stores: [],
+      items: [{ id: 1, name: 'InBackup', storeIds: [], boughtAt: null, removedAt: null, deletedAt: null, updatedAt: '2026-01-01T00:00:00.000Z' }],
+      shoppingRuns: [],
+      checkedItems: [],
+    },
+  });
+
+  const before = new Date().toISOString();
+  const result = await makeSync(fake).restoreBackup('2026-01-01.json');
+
+  assert.equal(result.ok, true);
+  assert.equal(await db.items.count(), 2);
+  assert.equal((await db.items.get(1)).deletedAt, null);
+  const extra = await db.items.get(2);
+  assert.ok(extra.deletedAt);
+  assert.ok(extra.updatedAt >= before);
+  const pushed = fake.files.get(FILE).data.items;
+  assert.equal(pushed.length, 2);
+  assert.ok(pushed.find(i => i.id === 2).deletedAt);
+});
+
+test('restore: stamped rows win LWW against a stale sibling pushing newer pre-restore state', async () => {
+  await setCreds();
+  await seedItem({ id: 1, name: 'Before', updatedAt: '2026-03-01T00:00:00.000Z' });
+  const fake = makeFake();
+  fake.files.set(FILE, remoteFile([{
+    id: 1, name: 'Before', storeIds: [], boughtAt: null, removedAt: null, deletedAt: null,
+    updatedAt: '2026-03-01T00:00:00.000Z',
+  }]));
+  fake.files.set(`${BACKUPS}/2026-01-01.json`, {
+    sha: 'bk',
+    data: {
+      version: 1,
+      stores: [],
+      items: [{ id: 1, name: 'Restored', storeIds: [], boughtAt: null, removedAt: null, deletedAt: null, updatedAt: '2026-01-01T00:00:00.000Z' }],
+      shoppingRuns: [],
+      checkedItems: [],
+    },
+  });
+
+  const before = new Date().toISOString();
+  const sync = makeSync(fake);
+  const result = await sync.restoreBackup('2026-01-01.json');
+
+  assert.equal(result.ok, true);
+  const restored = await db.items.get(1);
+  assert.equal(restored.name, 'Restored');
+  assert.ok(restored.updatedAt >= before);
+  assert.equal(fake.files.get(FILE).data.items[0].name, 'Restored');
+
+  // A stale sibling device pushes its newer pre-restore state.
+  fake.files.set(FILE, remoteFile([{
+    id: 1, name: 'Before', storeIds: [], boughtAt: null, removedAt: null, deletedAt: null,
+    updatedAt: '2026-03-01T00:00:00.000Z',
+  }]));
+
+  await sync.flushSync();
+
+  assert.equal((await db.items.get(1)).name, 'Restored');
+  assert.equal(fake.files.get(FILE).data.items[0].name, 'Restored');
+});
+
+test('restore: network failure after import reports localChanged', async () => {
+  await setCreds();
+  const fake = makeFake();
+  const transport = { ...fake.transport, putFile: async () => { throw new Error('network down'); } };
+  const sync = createSync({ makeTransport: () => transport });
+  const before = new Date().toISOString();
+  const restored = {
+    version: 1,
+    stores: [],
+    items: [{ id: 7, name: 'Restored', storeIds: [], boughtAt: null, removedAt: null, deletedAt: null, updatedAt: '2026-01-01T00:00:00.000Z' }],
+    shoppingRuns: [],
+    checkedItems: [],
+  };
+
+  const result = await sync.restoreFromData(restored);
+
+  assert.equal(result.ok, false);
+  assert.equal(result.localChanged, true);
+  assert.match(result.message, /network down/);
+  const items = await db.items.toArray();
+  assert.equal(items.length, 1);
+  assert.equal(items[0].name, 'Restored');
+  assert.ok(items[0].updatedAt >= before);
+});
+
+test('restore: live file fetch failure fails before touching local data', async () => {
+  await setCreds();
+  await seedItem({ name: 'Keep' });
+  const fake = makeFake({ getStatus: () => ({ status: 401 }) });
+
+  const result = await makeSync(fake).restoreFromData({ version: 1, items: [] });
+
+  assert.equal(result.ok, false);
+  assert.match(result.message, /Authentication failed/);
+  assert.equal(await db.items.count(), 1);
+  assert.equal((await db.items.get(1)).name, 'Keep');
+  assert.equal(fake.calls.put, 0);
 });
 
 test('restoreFromData without credentials fails without touching local data', async () => {
