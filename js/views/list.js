@@ -6,7 +6,7 @@ import {
   upsertItem, removeFromList, reactivateItem, softDelete,
 } from '../data.js';
 import { computeListView } from './list-model.js';
-import { esc, storeBg } from '../dom.js';
+import { esc, storeBg, titleCase } from '../dom.js';
 
 let subscription = null;
 let activeStoreFilter = null;
@@ -27,7 +27,7 @@ export function initList() {
     error: console.error,
   });
 
-  document.getElementById('btn-add-item').onclick = () => openItemModal(null);
+  document.getElementById('btn-add-item').onclick = () => openItemModal(null, titleCase(searchQuery));
   document.getElementById('btn-save-item').onclick = saveItem;
   document.getElementById('btn-archive-item').onclick = archiveItem;
   document.getElementById('btn-remove-item').onclick = removeItem;
@@ -89,7 +89,16 @@ function renderItems({ active, inactive, empty }) {
   ul.innerHTML = '';
 
   if (empty) {
-    ul.innerHTML = `<li class="empty-state">${empty === 'no-match' ? 'No items match the filter.' : 'No items yet.\nTap + to add one.'}</li>`;
+    const noMatch = empty === 'no-match';
+    ul.innerHTML = `<li class="empty-state">${noMatch ? 'No items match the filter.' : 'No items yet.\nTap + to add one.'}</li>`;
+    if (noMatch && searchQuery) {
+      const name = titleCase(searchQuery);
+      const btn = document.createElement('button');
+      btn.className = 'empty-add-btn';
+      btn.textContent = `Add "${name}"`;
+      btn.onclick = () => openItemModal(null, name);
+      ul.querySelector('.empty-state').appendChild(btn);
+    }
     return;
   }
 
@@ -144,12 +153,12 @@ function makeItemRow(item, storeMap) {
   return li;
 }
 
-async function openItemModal(item) {
+async function openItemModal(item, prefillName = '') {
   const stores = await db.stores.filter(s => !isArchived(s)).sortBy('sortOrder');
 
   document.getElementById('modal-item-title').textContent = item ? 'Edit Item' : 'Add Item';
   document.getElementById('item-id').value = item?.id ?? '';
-  document.getElementById('item-name').value = item?.name ?? '';
+  document.getElementById('item-name').value = item?.name ?? prefillName;
   document.getElementById('item-qty').value = item?.quantity ?? '';
   document.getElementById('item-unit').value = item?.unit ?? '';
   document.getElementById('item-notes').value = item?.notes ?? '';
@@ -228,7 +237,14 @@ async function saveItem() {
   };
 
   await upsertItem(id ? Number(id) : null, fields);
+  if (!id) clearSearch();
   closeItemModal();
+}
+
+function clearSearch() {
+  document.getElementById('list-search').value = '';
+  searchQuery = '';
+  renderNow();
 }
 
 async function removeItem() {

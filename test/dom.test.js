@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { esc, storeBg } from '../js/dom.js';
+import { esc, storeBg, titleCase } from '../js/dom.js';
 
 // ── esc ──
 
@@ -27,4 +27,26 @@ test('storeBg: single colour when no colour2', () => {
 
 test('storeBg: gradient when colour2 present', () => {
   assert.equal(storeBg({ colour: '#fff', colour2: '#000' }), 'linear-gradient(135deg, #fff 50%, #000 50%)');
+});
+
+// ── titleCase ──
+
+test('titleCase: capitalizes each word, lowercasing the rest', () => {
+  assert.equal(titleCase('milk'), 'Milk');
+  assert.equal(titleCase('milk powder'), 'Milk Powder');
+  assert.equal(titleCase('MILK'), 'Milk');
+  assert.equal(titleCase('oat MILK'), 'Oat Milk');
+});
+
+test('titleCase: leaves words with no leading letter untouched', () => {
+  assert.equal(titleCase('7up'), '7up');
+});
+
+test('titleCase: collapses surrounding/inner whitespace', () => {
+  assert.equal(titleCase('  milk   powder  '), 'Milk Powder');
+});
+
+test('titleCase: empty/blank input yields empty string', () => {
+  assert.equal(titleCase(''), '');
+  assert.equal(titleCase('   '), '');
 });

@@ -513,7 +513,7 @@ body {
 .btn-row { display: flex; justify-content: space-between; align-items: center; gap: 10px; margin-bottom: 14px; }
 .btn-row-left { display: flex; gap: 10px; }
 
-.primary-btn, .secondary-btn, .danger-btn, .warn-btn, .text-btn {
+.primary-btn, .secondary-btn, .danger-btn, .warn-btn, .text-btn, .empty-add-btn {
   padding: 12px 22px;
   border-radius: 10px;
   font-size: 1rem;
@@ -525,6 +525,8 @@ body {
 }
 .primary-btn   { background: var(--blue); color: #fff; }
 .primary-btn:active { background: var(--blue-dk); }
+.empty-add-btn { background: var(--blue); color: #fff; display: block; width: fit-content; margin: 18px auto 0; }
+.empty-add-btn:active { background: var(--blue-dk); }
 .secondary-btn { background: var(--grey-2); color: var(--text); }
 .secondary-btn:active { filter: brightness(.92); }
 .danger-btn    { background: var(--red); color: #fff; }

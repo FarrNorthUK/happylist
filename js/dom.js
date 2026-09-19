@@ -10,3 +10,9 @@ export function storeBg(store) {
     ? `linear-gradient(135deg, ${store.colour} 50%, ${store.colour2} 50%)`
     : store.colour;
 }
+
+export function titleCase(str) {
+  return String(str).trim().toLowerCase().split(/\s+/).filter(Boolean)
+    .map(w => w[0].toUpperCase() + w.slice(1))
+    .join(' ');
+}
