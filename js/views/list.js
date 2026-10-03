@@ -9,7 +9,7 @@ import { computeListView } from './list-model.js';
 import { esc, storeBg, titleCase } from '../dom.js';
 
 let subscription = null;
-let activeStoreFilter = null;
+let storeFilter = new Set();
 let searchQuery = '';
 let _pickerStores = [];
 let _selectedStoreIds = new Set();
@@ -51,7 +51,7 @@ function renderNow() {
   const vm = computeListView({
     items: _lastData.items,
     stores: _lastData.stores,
-    activeStoreFilter,
+    selectedStoreIds: [...storeFilter],
     searchQuery,
   });
   renderFilters(vm.filters);
@@ -77,7 +77,13 @@ function makeChip(f) {
   btn.textContent = f.label;
   if (f.colour && f.active) btn.style.background = f.colour;
   btn.onclick = () => {
-    activeStoreFilter = f.storeId;
+    if (f.storeId === null) {
+      storeFilter.clear();
+    } else if (storeFilter.has(f.storeId)) {
+      storeFilter.delete(f.storeId);
+    } else {
+      storeFilter.add(f.storeId);
+    }
     renderNow();
   };
   return btn;
